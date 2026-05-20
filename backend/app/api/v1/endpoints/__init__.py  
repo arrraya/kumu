@@ -1,0 +1,5 @@
+from .players import router as players_router
+from .teams import router as teams_router
+from .matches import router as matches_router
+from .reports import router as reports_router
+from .analytics import router as analytics_router

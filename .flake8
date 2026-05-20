@@ -1,0 +1,15 @@
+[flake8]
+max-line-length = 100
+ignore = 
+    # D100: Missing docstring in public module
+    # D103: Missing docstring in public function
+    # D104: Missing docstring in public package
+    D100,D103,D104,
+    # W503: Line break before binary operator
+    W503
+exclude = 
+    venv,
+    __pycache__,
+    .git,
+    .tox,
+    dist

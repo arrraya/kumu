@@ -1,0 +1,10 @@
+[MESSAGES CONTROL]
+# Disable missing docstring warnings:
+disable=C0111,C0115,missing-module-docstring,missing-class-docstring
+
+[DESIGN]
+# Don't require docstrings for private methods
+no-docstring-rgx=^_
+
+[FORMAT]
+max-line-length=100
