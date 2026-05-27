@@ -1,8 +1,7 @@
 import axios from 'axios';
 import { Player, Team, Match } from '@/types';
 
-const RAW_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-const API_URL = RAW_API_URL.includes('localhost') ? RAW_API_URL : RAW_API_URL.replace('http://', 'https://');
+const API_URL = 'https://kumu-production.up.railway.app';
 
 const api = axios.create({
   baseURL: API_URL,
