@@ -43,7 +43,7 @@ export default function Home() {
       )}
       
       {activeView === 'analytics' && (
-        <Analytics player={selectedPlayer} />
+        <Analytics />
       )}
     </div>
   )
