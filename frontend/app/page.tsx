@@ -22,8 +22,6 @@ export default function Home() {
       {activeView === 'dashboard' && (
         <Dashboard 
           setActiveView={setActiveView}
-          selectedPlayer={selectedPlayer}
-          selectedMatch={selectedMatch}
         />
       )}
       
