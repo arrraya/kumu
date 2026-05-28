@@ -13,7 +13,7 @@ const Analytics = ({ players = [] }) => {
   }
 
   // Safely get metric value with fallback
-  const getMetricValue = (player, path, defaultValue = 0) => {
+  const getMetricValue = (player: any, path: string, defaultValue: number = 0) => {
     try {
       const keys = path.split('.')
       let value = player
