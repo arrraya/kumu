@@ -684,7 +684,7 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
                 <CartesianGrid strokeDasharray="3 3" />
                  <XAxis dataKey="year" />
                  <YAxis />
-                 <Tooltip formatter={(value) => `€${value.toFixed(1)}M`} />
+                 <Tooltip formatter={(value) => `€${Number(value).toFixed(1)}M`} />
                  <Line type="monotone" dataKey="value" stroke="#22c55e" strokeWidth={3} dot={{ fill: '#22c55e', r: 6 }} />
                </LineChart>
              </ResponsiveContainer>
