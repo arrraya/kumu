@@ -190,7 +190,7 @@ const PlayerMatching: React.FC<PlayerMatchingProps> = ({
                       {selectedPlayer.position} • {selectedPlayer.age} years • {selectedPlayer.nationality}
                     </div>
                     <div className="text-gray-600">
-                      €{(selectedPlayer.market_value / 1000000).toFixed(1)}M • {selectedPlayer.current_team}
+                      €{(selectedPlayer.marketValue / 1000000).toFixed(1)}M • {selectedPlayer.currentTeam}
                     </div>
                   </div>
                 </div>
