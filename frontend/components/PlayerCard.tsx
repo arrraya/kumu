@@ -12,9 +12,9 @@ interface PlayerCardProps {
 
 const PlayerCard: React.FC<PlayerCardProps> = ({ player, onClick, isSelected }) => {
   // Safely access nested properties with fallbacks
-  const performanceValue = player?.performanceIndex?.value || player?.performance_index?.value || 0
-  const trend = player?.performanceIndex?.trend || player?.performance_index?.trend || 0
-  const marketValue = player?.market_value || 0
+  const performanceValue = player?.performanceIndex?.value || 0
+  const trend = player?.performanceIndex?.trend || 0
+  const marketValue = player?.marketValue || 0
   
   return (
     <div 
