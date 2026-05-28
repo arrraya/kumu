@@ -235,7 +235,7 @@ const PlayerMatching: React.FC<PlayerMatchingProps> = ({
                       <span className="font-medium">Overall Score:</span> {selectedMatch.score.overall.toFixed(1)}%
                     </div>
                     <div>
-                      <span className="font-medium">Offer Range:</span> {formatCurrency(selectedMatch.offer.minimum)} - {formatCurrency(selectedMatch.offer.maximum)}
+                      <span className="font-medium">Offer Range:</span> {formatCurrency(selectedMatch.offer.min)} - {formatCurrency(selectedMatch.offer.max)}
                     </div>
                     <div>
                       <span className="font-medium">Recommendation:</span> {selectedMatch.recommendation}
