@@ -237,9 +237,6 @@ const PlayerMatching: React.FC<PlayerMatchingProps> = ({
                     <div>
                       <span className="font-medium">Offer Range:</span> {formatCurrency(selectedMatch.offer.min)} - {formatCurrency(selectedMatch.offer.max)}
                     </div>
-                    <div>
-                      <span className="font-medium">Recommendation:</span> {selectedMatch.recommendation}
-                    </div>
                     <button
                       onClick={handleViewReport}
                       className="mt-4 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
