@@ -1,3 +1,4 @@
+# Production build v2
 FROM node:18-alpine
 
 WORKDIR /app
