@@ -18,6 +18,12 @@ app = FastAPI(
     version="1.0.0",
 )
 
+@app.middleware("http")
+async def force_https_scheme(request, call_next):
+    if request.headers.get("x-forwarded-proto") == "https":
+        request.scope["scheme"] = "https"
+    return await call_next(request)
+
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
