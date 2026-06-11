@@ -19,12 +19,12 @@ export default function Navigation({ activeView, setActiveView }: NavigationProp
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center gap-8">
-            <div className="flex items-center gap-3">
+            <button onClick={() => setActiveView('dashboard')} className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity bg-transparent border-0 p-0">
               <div className="w-10 h-10 bg-green-600 rounded-lg flex items-center justify-center">
                 <Users className="w-6 h-6 text-white" />
               </div>
               <h1 className="text-2xl font-bold text-gray-900">Kümü</h1>
-            </div>
+            </button>
             
             <div className="hidden md:flex items-center gap-6">
               {navItems.map((item) => {
