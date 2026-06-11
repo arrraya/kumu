@@ -67,6 +67,7 @@ const MatchCard: React.FC<MatchCardProps> = ({ match, isSelected, onClick, onVie
             <button
               onClick={(e) => {
                 e.stopPropagation();
+                onClick();
                 onViewReport();
               }}
               className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"

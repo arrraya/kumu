@@ -94,11 +94,13 @@ const PlayerMatching: React.FC<PlayerMatchingProps> = ({
     // Matches will be fetched by the useEffect
   };
 
-  const handleViewReport = async () => {
-    if (!selectedPlayer || !selectedMatch) return;
+  const handleViewReport = async (matchOverride?: typeof selectedMatch) => {
+    const match = matchOverride ?? selectedMatch;
+    if (!selectedPlayer || !match) return;
     try {
-      const report = await api.reports.generate(selectedMatch?.id ?? 0);
+      const report = await api.reports.generate(match.id ?? 0);
       localStorage.setItem("currentReport", JSON.stringify(report));
+      setSelectedMatch(match);
       setActiveView("report");
     } catch (error) {
       console.error("Error generating report:", error);
