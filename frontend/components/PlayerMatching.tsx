@@ -240,7 +240,7 @@ const PlayerMatching: React.FC<PlayerMatchingProps> = ({
                       <span className="font-medium">Offer Range:</span> {formatCurrency(selectedMatch.offer.min)} - {formatCurrency(selectedMatch.offer.max)}
                     </div>
                     <button
-                      onClick={handleViewReport}
+                      onClick={() => handleViewReport()}
                       className="mt-4 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
                     >
                       Generate Scouting Report
