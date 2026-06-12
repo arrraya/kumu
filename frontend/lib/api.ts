@@ -63,8 +63,11 @@ export const apiService = {
   },
   
   reports: {
-    generate: async (matchId: number) => {
-      const response = await api.post(`/api/v1/reports/${matchId}`);
+    generate: async (playerId: string, teamId: string) => {
+      const response = await api.post(`/api/v1/reports/generate`, {
+        player_id: playerId,
+        team_id: teamId
+      });
       return response.data;
     }
   }

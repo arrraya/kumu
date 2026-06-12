@@ -98,7 +98,7 @@ const PlayerMatching: React.FC<PlayerMatchingProps> = ({
     const match = matchOverride ?? selectedMatch;
     if (!selectedPlayer || !match) return;
     try {
-      const report = await api.reports.generate(match.id ?? 0);
+      const report = await api.reports.generate(selectedPlayer.id, match.team.id);
       localStorage.setItem("currentReport", JSON.stringify(report));
       setSelectedMatch(match);
       setActiveView("report");
