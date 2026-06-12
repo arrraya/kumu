@@ -114,18 +114,17 @@ class ScoutingReportGenerator:
             action = "Consider alternative targets"
 
         # Calculate key metrics
-        performance_percentile = np.mean(
-            [
-                self.calculate_percentile(
-                    player_data["metrics"].get(cat, {}).get(metric, 0),
-                    metric,
-                    player_data["position"],
-                    team_data["league"],
-                )
-                for cat in player_data["metrics"]
-                for metric in player_data["metrics"][cat]
-            ]
-        )
+        percentile_values = [
+            self.calculate_percentile(
+                player_data["metrics"].get(cat, {}).get(metric, 0),
+                metric,
+                player_data["position"],
+                team_data["league"],
+            )
+            for cat in player_data["metrics"]
+            for metric in player_data["metrics"][cat]
+        ]
+        performance_percentile = np.mean(percentile_values) if percentile_values else 50.0
 
         return {
             "recommendation": recommendation,
