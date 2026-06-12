@@ -20,8 +20,8 @@ async def generate_report(
 ):
     """Generate a scouting report"""
     # Get player and team data
-    player = player_service.get_player(db, request.player_id)
-    team = team_service.get_team(db, request.team_id)
+    player = player_service.get_player(db, int(request.player_id))
+    team = team_service.get_team(db, int(request.team_id))
 
     if not player:
         raise HTTPException(status_code=404, detail="Player not found")
