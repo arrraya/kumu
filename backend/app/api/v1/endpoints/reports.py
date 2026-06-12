@@ -28,8 +28,31 @@ async def generate_report(
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
 
+    # Convert ORM models to dicts expected by the report generator
+    player_data = {
+        "id": player.id,
+        "name": player.name,
+        "age": player.age,
+        "position": player.position,
+        "nationality": player.nationality,
+        "current_team": getattr(player, "current_team", None),
+        "market_value": getattr(player, "market_value", 0) or 0,
+        "performance_index": getattr(player, "performance_index", None) or {},
+        "metrics": getattr(player, "metrics", None) or {},
+        "performance_history": getattr(player, "performance_history", None) or [],
+    }
+    team_data = {
+        "id": team.id,
+        "name": team.name,
+        "league": getattr(team, "league", None),
+        "country": getattr(team, "country", None),
+        "budget": getattr(team, "budget", 0) or 0,
+        "formation": getattr(team, "formation", None),
+        "playing_style": getattr(team, "playing_style", None) or {},
+    }
+
     # Generate report
-    report_data = report_generator.generate_full_report(player, team)
+    report_data = report_generator.generate_full_report(player_data, team_data)
 
     # Save report to database
     db_report = models.ScoutingReport(
