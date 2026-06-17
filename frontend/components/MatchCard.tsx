@@ -39,19 +39,19 @@ const MatchCard: React.FC<MatchCardProps> = ({ match, isSelected, onClick, onVie
       <div className="grid grid-cols-4 gap-2 text-center mb-4">
         <div className="bg-green-50 p-2 rounded">
           <div className="text-xs text-gray-600">Tactical</div>
-          <div className="font-semibold text-green-600">{match.score.tactical}%</div>
+          <div className="font-semibold text-green-600">{match.score.tactical.toFixed(1)}%</div>
         </div>
         <div className="bg-blue-50 p-2 rounded">
           <div className="text-xs text-gray-600">Performance</div>
-          <div className="font-semibold text-blue-600">{match.score.performance}%</div>
+          <div className="font-semibold text-blue-600">{match.score.performance.toFixed(1)}%</div>
         </div>
         <div className="bg-yellow-50 p-2 rounded">
           <div className="text-xs text-gray-600">Financial</div>
-          <div className="font-semibold text-yellow-600">{match.score.financial}%</div>
+          <div className="font-semibold text-yellow-600">{match.score.financial.toFixed(1)}%</div>
         </div>
         <div className="bg-purple-50 p-2 rounded">
           <div className="text-xs text-gray-600">Growth</div>
-          <div className="font-semibold text-purple-600">{match.score.growth}%</div>
+          <div className="font-semibold text-purple-600">{match.score.growth.toFixed(1)}%</div>
         </div>
       </div>
 
