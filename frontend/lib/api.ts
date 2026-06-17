@@ -58,7 +58,15 @@ export const apiService = {
         team_ids: teamIds,
         min_score: 60.0
       });
-      return response.data;
+      // Normalize offer field names: backend sends minimum/maximum, frontend expects min/max
+      return response.data.map((match: any) => ({
+        ...match,
+        offer: {
+          min: match.offer?.minimum ?? match.offer?.min ?? 0,
+          max: match.offer?.maximum ?? match.offer?.max ?? 0,
+          recommended: match.offer?.recommended ?? 0,
+        },
+      }));
     }
   },
   
