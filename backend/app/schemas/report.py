@@ -9,6 +9,7 @@ class ReportMetadata(BaseModel):
     player_id: Union[str, int]
     team_name: str
     team_id: Union[str, int]
+    report_id: Optional[int] = None
 
 
 class ExecutiveSummary(BaseModel):

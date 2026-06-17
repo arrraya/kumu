@@ -102,6 +102,11 @@ async def generate_report(
     )
     db.add(db_report)
     db.commit()
+    db.refresh(db_report)
+
+    # Expose the saved report's DB id so the frontend can request its PDF
+    if isinstance(report_data.get("report_metadata"), dict):
+        report_data["report_metadata"]["report_id"] = db_report.id
 
     return report_data
 
