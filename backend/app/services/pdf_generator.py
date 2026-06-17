@@ -390,9 +390,24 @@ class PDFReportGenerator:
         if offer_strategy:
             elements.append(Paragraph("<b>Offer Strategy:</b>", self.styles["SubSection"]))
             for key, value in offer_strategy.items():
+                label = key.replace('_', ' ').title()
+                if isinstance(value, dict):
+                    # Nested structure (e.g. payment_structure): render sub-items
+                    parts = []
+                    for sub_key, sub_value in value.items():
+                        sub_label = sub_key.replace('_', ' ').title()
+                        if isinstance(sub_value, (int, float)):
+                            parts.append(f"{sub_label}: {sub_value}")
+                        else:
+                            parts.append(f"{sub_label}: {sub_value}")
+                    display = ", ".join(parts)
+                elif isinstance(value, (int, float)):
+                    display = f"€{value:,.0f}"
+                else:
+                    display = str(value)
                 elements.append(
                     Paragraph(
-                        f"• {key.replace('_', ' ').title()}: €{value:,.0f}",
+                        f"• {label}: {display}",
                         self.styles["BodyText"],
                     )
                 )
