@@ -12,6 +12,7 @@ import {
   ResponsiveContainer, Cell 
 } from 'recharts';
 import { Player, Match } from '@/types';
+import { api } from '@/lib/api';
 
 interface ScoutingReportProps {
   player: Player | null;
@@ -25,6 +26,7 @@ interface ScoutingReportData {
     player_id: string;
     team_name: string;
     team_id: string;
+    report_id?: number;
   };
   executive_summary: {
     recommendation: string;
@@ -153,6 +155,25 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
       setLoading(false);
     }
   }, [player, match]);
+
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+
+  const handleDownloadPdf = async () => {
+    const reportId = report?.report_metadata?.report_id;
+    if (!reportId) {
+      alert("PDF not available for this report yet. Please regenerate the report.");
+      return;
+    }
+    try {
+      setDownloadingPdf(true);
+      await api.reports.downloadPdf(reportId, report?.report_metadata?.player_name);
+    } catch (error) {
+      console.error("Error downloading PDF:", error);
+      alert("Failed to download PDF. Please try again.");
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
 
   const generateMockReport = () => {
     // This would be replaced with actual API call
@@ -930,9 +951,13 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
              Generated: {new Date(report.report_metadata.generated_date).toLocaleDateString()}
            </p>
          </div>
-         <button className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2">
+         <button
+           onClick={handleDownloadPdf}
+           disabled={downloadingPdf}
+           className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+         >
            <Download className="w-4 h-4" />
-           Export PDF
+           {downloadingPdf ? "Generating..." : "Export PDF"}
          </button>
        </div>
      </div>
