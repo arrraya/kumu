@@ -1,14 +1,14 @@
 from pydantic import BaseModel, Field
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union
 from datetime import datetime
 
 
 class ReportMetadata(BaseModel):
     generated_date: str
     player_name: str
-    player_id: str
+    player_id: Union[str, int]
     team_name: str
-    team_id: str
+    team_id: Union[str, int]
 
 
 class ExecutiveSummary(BaseModel):
@@ -63,7 +63,7 @@ class RiskAssessment(BaseModel):
 
 class NegotiationStrategy(BaseModel):
     negotiation_position: Dict[str, Any]
-    offer_strategy: Dict[str, float]
+    offer_strategy: Dict[str, Any]
     timeline: Dict[str, str]
     tactics: List[str]
 
