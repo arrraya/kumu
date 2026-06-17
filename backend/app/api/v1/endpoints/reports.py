@@ -10,6 +10,17 @@ import app.services.player_service as player_service
 import app.services.team_service as team_service
 
 router = APIRouter()
+
+
+def _numpy_to_native(obj):
+    """Recursively convert numpy types to native Python types for JSON serialization."""
+    if isinstance(obj, dict):
+        return {k: _numpy_to_native(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_numpy_to_native(v) for v in obj]
+    if hasattr(obj, "item"):  # numpy scalars (bool_, float64, int64, etc.)
+        return obj.item()
+    return obj
 report_generator = ScoutingReportGenerator()
 pdf_generator = PDFReportGenerator()
 
@@ -80,6 +91,7 @@ async def generate_report(
 
     # Generate report
     report_data = report_generator.generate_full_report(player_data, team_data)
+    report_data = _numpy_to_native(report_data)
 
     # Save report to database
     db_report = models.ScoutingReport(
