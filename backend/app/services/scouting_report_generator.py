@@ -184,13 +184,13 @@ class ScoutingReportGenerator:
         percentage_diff = ((value - avg_value) / avg_value) * 100
 
         if percentage_diff > 20:
-            return f"+{percentage_diff:.1f}% above average"
+            return f"+{percentage_diff:.1f}% well above average"
         elif percentage_diff > 0:
             return f"+{percentage_diff:.1f}% above average"
         elif percentage_diff > -20:
             return f"{percentage_diff:.1f}% below average"
         else:
-            return f"{percentage_diff:.1f}% below average"
+            return f"{percentage_diff:.1f}% well below average"
 
     def _identify_statistical_strengths(self, metrics_analysis: Dict) -> List[str]:
         """Identify player's statistical strengths"""
@@ -295,9 +295,12 @@ class ScoutingReportGenerator:
         compatibility_score = 0
         notes = []
 
+        metrics = player_data.get("metrics", {})
+
         # Check passing style fit
         if team_style.get("possession", 0.5) > 0.6:
-            if player_data["metrics"]["passing"]["completion_rate"] > 0.82:
+            completion_rate = metrics.get("passing", {}).get("completion_rate", 0)
+            if completion_rate > 0.82:
                 compatibility_score += 25
                 notes.append("Excellent fit for possession-based system")
             else:
@@ -306,7 +309,8 @@ class ScoutingReportGenerator:
 
         # Check pressing fit
         if team_style.get("pressing_intensity", 0.5) > 0.7:
-            if player_data["metrics"]["movement"]["distance_covered_per_90"] > 10:
+            distance = metrics.get("movement", {}).get("distance_covered_per_90", 0)
+            if distance > 10:
                 compatibility_score += 25
                 notes.append("High work rate suits pressing system")
             else:
@@ -1003,9 +1007,12 @@ class ScoutingReportGenerator:
             return {"analysis": "Insufficient historical data"}
 
         # Calculate performance trends
-        recent_avg = np.mean([h["rating"] for h in history[-10:]])
-        historical_avg = np.mean([h["rating"] for h in history])
-        peak_performance = max([h["rating"] for h in history])
+        recent_avg = np.mean([h.get("rating", 0) for h in history[-10:]])
+        historical_avg = np.mean([h.get("rating", 0) for h in history])
+        peak_performance = max([h.get("rating", 0) for h in history])
+
+        if historical_avg == 0 or peak_performance == 0:
+            return {"analysis": "Insufficient rating data"}
 
         return {
             "recent_vs_historical": f"{((recent_avg - historical_avg) / historical_avg * 100):+.1f}%",

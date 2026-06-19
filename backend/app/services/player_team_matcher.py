@@ -40,9 +40,9 @@ class Player:
             },
             "shooting": {
                 "shots_per_90": np.mean([g.get("shots", 0) for g in recent_games]),
-                "xG_per_shot": np.mean(
-                    [g.get("xG", 0) for g in recent_games if g.get("shots", 0) > 0]
-                ),
+                "xG_per_shot": (
+                    lambda xgs: np.mean(xgs) if xgs else 0.0
+                )([g.get("xG", 0) for g in recent_games if g.get("shots", 0) > 0]),
                 "conversion_rate": sum([g.get("goals", 0) for g in recent_games])
                 / max(sum([g.get("shots", 0) for g in recent_games]), 1),
             },
@@ -91,7 +91,7 @@ class Player:
             "value": current_value,
             "trend": trend,
             "volatility": volatility,
-            "confidence": 1 - volatility,
+            "confidence": max(0.0, min(1.0, 1 - volatility)),
         }
 
 
