@@ -251,7 +251,8 @@ class NegotiationReportGenerator:
 
     def generate_report(self, player: Player, team: Team, match_score: Dict) -> Dict:
         """Generate comprehensive negotiation report"""
-        player_value = player.market_value if player.market_value > 0 else 10
+        # Unit: euros (absolute). Fallback default is 10M euros, not 10.
+        player_value = player.market_value if player.market_value > 0 else 10_000_000
 
         # Calculate offer range based on match score and budget
         base_offer = min(player_value * 0.8, team.budget * 0.3)
@@ -285,16 +286,16 @@ class NegotiationReportGenerator:
                 ),
             },
             "financial_analysis": {
-                "current_market_value": f"€{player_value:.1f}M",
+                "current_market_value": f"€{player_value/1_000_000:.1f}M",
                 "recommended_offer_range": {
-                    "minimum": f"€{base_offer:.1f}M",
-                    "maximum": f"€{max_offer:.1f}M",
+                    "minimum": f"€{base_offer/1_000_000:.1f}M",
+                    "maximum": f"€{max_offer/1_000_000:.1f}M",
                 },
                 "budget_impact": f"{(base_offer/team.budget)*100:.1f}% of available budget",
             },
             "key_points": {"strengths": strengths, "concerns": concerns},
             "negotiation_strategy": {
-                "opening_offer": f"€{base_offer:.1f}M",
+                "opening_offer": f"€{base_offer/1_000_000:.1f}M",
                 "contract_length": "3-4 years" if player.age < 28 else "2-3 years",
                 "performance_bonuses": "Recommended to align interests",
                 "key_talking_points": [
