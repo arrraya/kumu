@@ -593,9 +593,12 @@ class ScoutingReportGenerator:
             risk_score += 10
             risk_factors.append("Very high workload")
 
+        injury_level = "High" if risk_score > 40 else "Moderate" if risk_score > 20 else "Low"
         return {
-            "risk_level": "High" if risk_score > 40 else "Moderate" if risk_score > 20 else "Low",
+            "risk_level": injury_level,
+            "level": injury_level,
             "risk_score": risk_score,
+            "score": risk_score,
             "risk_factors": risk_factors,
             "mitigation_suggestions": self._suggest_injury_mitigation(risk_factors),
         }
@@ -899,7 +902,7 @@ class ScoutingReportGenerator:
             player_data["market_value"],
         )
 
-        budget_percentage = (total_investment / team_data["budget"]) * 100
+        budget_percentage = (total_investment / team_data["budget"]) * 100 if team_data.get("budget") else 0
 
         if budget_percentage < 30:
             risk_level = "Low"
@@ -914,9 +917,15 @@ class ScoutingReportGenerator:
             risk_level = "Very High"
             risk_description = "Risky - dominates transfer budget"
 
+        # Expose a numeric score derived from budget impact (capped at 100),
+        # so financial risk contributes to the overall risk average and renders consistently.
+        risk_score = min(round(budget_percentage, 1), 100)
+
         return {
             "risk_level": risk_level,
             "risk_description": risk_description,
+            "score": risk_score,
+            "level": risk_level,
             "budget_impact": f"{budget_percentage:.1f}% of available budget",
             "mitigation_strategies": (
                 [
