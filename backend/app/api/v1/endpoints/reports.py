@@ -21,6 +21,42 @@ def _numpy_to_native(obj):
     if hasattr(obj, "item"):  # numpy scalars (bool_, float64, int64, etc.)
         return obj.item()
     return obj
+
+
+def _compute_data_coverage(player) -> dict:
+    """Inspect which key fields are genuinely populated on the player (before
+    any defaults are applied) so the frontend can show a data-coverage badge.
+
+    A field counts as present only if it holds real data: non-None, and for
+    dicts/lists/strings, non-empty. This is how we distinguish "no data" from
+    a legitimate zero/empty value downstream.
+    """
+    def present(value) -> bool:
+        if value is None:
+            return False
+        if isinstance(value, (dict, list, str)) and len(value) == 0:
+            return False
+        return True
+
+    checks = {
+        "market_value": present(getattr(player, "market_value", None))
+        and (getattr(player, "market_value", 0) or 0) > 0,
+        "performance_index": present(getattr(player, "performance_index", None)),
+        "metrics": present(getattr(player, "metrics", None)),
+        "performance_history": present(getattr(player, "performance_history", None)),
+    }
+
+    available = sum(1 for v in checks.values() if v)
+    total = len(checks)
+    missing = [field for field, ok in checks.items() if not ok]
+
+    return {
+        "available_fields": available,
+        "total_fields": total,
+        "coverage_pct": round((available / total) * 100, 1) if total else 0.0,
+        "missing_fields": missing,
+    }
+
 report_generator = ScoutingReportGenerator()
 pdf_generator = PDFReportGenerator()
 
@@ -104,9 +140,12 @@ async def generate_report(
     db.commit()
     db.refresh(db_report)
 
-    # Expose the saved report's DB id so the frontend can request its PDF
+    # Expose the saved report's DB id so the frontend can request its PDF,
+    # plus a data-coverage summary (how much of the analysis rests on real
+    # data vs. neutral defaults). Computed from the player BEFORE defaults.
     if isinstance(report_data.get("report_metadata"), dict):
         report_data["report_metadata"]["report_id"] = db_report.id
+        report_data["report_metadata"]["data_coverage"] = _compute_data_coverage(player)
 
     return report_data
 

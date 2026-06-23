@@ -10,6 +10,7 @@ class ReportMetadata(BaseModel):
     team_name: str
     team_id: Union[str, int]
     report_id: Optional[int] = None
+    data_coverage: Optional[Dict[str, Any]] = None
 
 
 class ExecutiveSummary(BaseModel):
