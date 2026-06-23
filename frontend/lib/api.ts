@@ -10,6 +10,20 @@ const api = axios.create({
   },
 });
 
+// Normalize backend snake_case player fields to the camelCase the frontend expects.
+// The API returns market_value/current_team/performance_index; the Player type uses
+// marketValue/currentTeam/performanceIndex. Without this, reads like player.marketValue
+// are undefined -> NaN in the UI.
+function normalizePlayer(p: any): any {
+  if (!p) return p;
+  return {
+    ...p,
+    marketValue: p.marketValue ?? p.market_value ?? 0,
+    currentTeam: p.currentTeam ?? p.current_team ?? '',
+    performanceIndex: p.performanceIndex ?? p.performance_index ?? null,
+  };
+}
+
 // Interceptor to handle errors
 api.interceptors.response.use(
   (response) => response,
@@ -23,12 +37,12 @@ export const apiService = {
   players: {
     getAll: async (filters?: any): Promise<Player[]> => {
       const response = await api.get('/api/v1/players', { params: filters });
-      return response.data;
+      return (response.data || []).map(normalizePlayer);
     },
     
     getById: async (id: string): Promise<Player> => {
       const response = await api.get(`/api/v1/players/${id}`);
-      return response.data;
+      return normalizePlayer(response.data);
     },
     
     getAnalytics: async (id: string, period: string = 'last_10') => {
