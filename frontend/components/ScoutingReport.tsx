@@ -27,6 +27,12 @@ interface ScoutingReportData {
     team_name: string;
     team_id: string;
     report_id?: number;
+    data_coverage?: {
+      available_fields: number;
+      total_fields: number;
+      coverage_pct: number;
+      missing_fields: string[];
+    };
   };
   executive_summary: {
     recommendation: string;
@@ -950,6 +956,29 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
            <p className="text-sm text-gray-500 mt-1">
              Generated: {new Date(report.report_metadata.generated_date).toLocaleDateString()}
            </p>
+           {report.report_metadata.data_coverage && (() => {
+             const cov = report.report_metadata.data_coverage;
+             const pct = cov.coverage_pct;
+             const tone =
+               pct >= 75
+                 ? "bg-green-50 text-green-700 border-green-200"
+                 : pct >= 40
+                 ? "bg-yellow-50 text-yellow-700 border-yellow-200"
+                 : "bg-red-50 text-red-700 border-red-200";
+             const title =
+               cov.missing_fields.length > 0
+                 ? `Missing: ${cov.missing_fields.join(", ")}`
+                 : "All key data sources available";
+             return (
+               <div
+                 title={title}
+                 className={`inline-flex items-center gap-2 mt-3 px-3 py-1 rounded-full border text-xs font-medium ${tone}`}
+               >
+                 <span className="w-2 h-2 rounded-full bg-current opacity-70" />
+                 Data coverage: {pct}% ({cov.available_fields}/{cov.total_fields} sources)
+               </div>
+             );
+           })()}
          </div>
          <button
            onClick={handleDownloadPdf}
