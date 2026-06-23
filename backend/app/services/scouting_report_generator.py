@@ -1047,8 +1047,18 @@ class ScoutingReportGenerator:
             "age_related_risk": self._assess_age_risk(player_data),
         }
 
-        # Calculate overall risk score
-        total_risk_score = np.mean([rf["score"] for rf in risk_factors.values() if "score" in rf])
+        # Normalize each sub-risk to expose uniform "score" and "level" keys.
+        # Sub-assessments historically used inconsistent key names
+        # (e.g. injury_risk -> risk_score/risk_level, financial_risk -> risk_level only),
+        # which broke consumers expecting score/level and excluded them from the average.
+        for rf in risk_factors.values():
+            if "score" not in rf:
+                rf["score"] = rf.get("risk_score", 0)
+            if "level" not in rf:
+                rf["level"] = rf.get("risk_level", self._categorize_risk(rf["score"]))
+
+        # Calculate overall risk score (now includes all sub-risks)
+        total_risk_score = np.mean([rf["score"] for rf in risk_factors.values()])
 
         return {
             "overall_risk_level": self._categorize_risk(total_risk_score),
