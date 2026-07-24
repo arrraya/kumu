@@ -41,9 +41,39 @@ class ScoutingReportGenerator:
             "negotiation_strategy",
         ]
 
+    def _load_benchmarks_from_db(self) -> Dict:
+        """Fetch pipeline-produced benchmarks from the benchmarks table.
+
+        Returns {} if the table doesn't exist or is empty, so callers can
+        fall back to the hardcoded sample without crashing.
+        """
+        try:
+            from sqlalchemy import text
+            from app.db.database import SessionLocal
+
+            session = SessionLocal()
+            try:
+                rows = session.execute(
+                    text("SELECT data FROM benchmarks ORDER BY created_at DESC")
+                ).fetchall()
+            finally:
+                session.close()
+
+            merged: Dict = {}
+            for (data,) in rows:
+                if isinstance(data, dict):
+                    for pos, leagues in data.items():
+                        merged.setdefault(pos, {}).update(leagues)
+            return merged
+        except Exception:
+            return {}
+
     def _load_benchmarks(self) -> Dict:
-        """Load statistical benchmarks for different positions"""
-        # Sample benchmarks (in production, load from database)
+        """Load statistical benchmarks: DB first (pipeline-produced), hardcoded fallback."""
+        db_benchmarks = self._load_benchmarks_from_db()
+        if db_benchmarks:
+            return db_benchmarks
+        # Fallback: sample benchmarks (used only if the benchmarks table is absent)
         return {
             "CAM": {
                 "Premier League": {
@@ -69,8 +99,15 @@ class ScoutingReportGenerator:
 
     def calculate_percentile(self, value: float, metric: str, position: str, league: str) -> int:
         """Calculate percentile rank for a given metric"""
-        if position not in self.benchmarks or league not in self.benchmarks[position]:
+        if position not in self.benchmarks:
             return 50  # Default to average if no benchmark
+        if league not in self.benchmarks[position]:
+            # Fall back to any available reference population for this position
+            # (e.g. "World Cup 2022" pipeline benchmarks) before giving up.
+            available = list(self.benchmarks[position].keys())
+            if not available:
+                return 50
+            league = available[0]
 
         benchmarks = self.benchmarks[position][league].get(metric, {})
         if not benchmarks:
@@ -174,8 +211,13 @@ class ScoutingReportGenerator:
 
     def _compare_to_average(self, value: float, metric: str, position: str, league: str) -> str:
         """Compare value to league average (50th percentile)"""
-        if position not in self.benchmarks or league not in self.benchmarks[position]:
+        if position not in self.benchmarks:
             return "No benchmark available"
+        if league not in self.benchmarks[position]:
+            available = list(self.benchmarks[position].keys())
+            if not available:
+                return "No benchmark available"
+            league = available[0]
 
         avg_value = self.benchmarks[position][league].get(metric, {}).get(50, 0)
         if avg_value == 0:
