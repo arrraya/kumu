@@ -63,7 +63,14 @@ class ScoutingReportGenerator:
             for (data,) in rows:
                 if isinstance(data, dict):
                     for pos, leagues in data.items():
-                        merged.setdefault(pos, {}).update(leagues)
+                        for league, metrics in leagues.items():
+                            # JSON stores dict keys as strings; percentile keys
+                            # must be ints for numeric comparison downstream.
+                            fixed = {
+                                metric: {int(k): float(v) for k, v in pcts.items()}
+                                for metric, pcts in metrics.items()
+                            }
+                            merged.setdefault(pos, {})[league] = fixed
             return merged
         except Exception:
             return {}
