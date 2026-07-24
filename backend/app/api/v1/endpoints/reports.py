@@ -23,6 +23,29 @@ def _numpy_to_native(obj):
     return obj
 
 
+def _merge_metrics_defaults(real_metrics, defaults: dict) -> dict:
+    """Per-category merge: keep real metric categories, fill missing ones with
+    neutral defaults so the report generator always receives a full structure.
+    Coverage tracking (computed from the raw player before this merge) is what
+    keeps this honest.
+    Also fills None values inside real categories with the category default,
+    since downstream code does arithmetic on these values."""
+    if not real_metrics or not isinstance(real_metrics, dict):
+        return defaults
+    merged = {}
+    for category, default_values in defaults.items():
+        real_cat = real_metrics.get(category)
+        if not isinstance(real_cat, dict):
+            merged[category] = default_values
+            continue
+        merged_cat = dict(default_values)
+        for key, value in real_cat.items():
+            if value is not None:
+                merged_cat[key] = value
+        merged[category] = merged_cat
+    return merged
+
+
 def _compute_data_coverage(player) -> dict:
     """Inspect which key fields are genuinely populated on the player (before
     any defaults are applied) so the frontend can show a data-coverage badge.
@@ -86,8 +109,7 @@ async def generate_report(
         "market_value": getattr(player, "market_value", 0) or 0,
         "performance_index": getattr(player, "performance_index", None)
         or {"value": 70.0, "trend": 0.0, "volatility": 0.2, "confidence": 0.5},
-        "metrics": getattr(player, "metrics", None)
-        or {
+        "metrics": _merge_metrics_defaults(getattr(player, "metrics", None), {
             "passing": {
                 "completion_rate": 0.75,
                 "progressive_passes_per_90": 3.0,
@@ -111,7 +133,7 @@ async def generate_report(
                 "interceptions_per_90": 1.5,
                 "aerial_duels_won": 0.5,
             },
-        },
+        }),
         "performance_history": getattr(player, "performance_history", None)
         or [{"rating": 7.0, "goals": 0, "assists": 0}] * 5,
     }
