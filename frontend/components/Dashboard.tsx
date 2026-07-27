@@ -11,6 +11,9 @@ interface DashboardProps {
 const Dashboard: React.FC<DashboardProps> = ({ setActiveView }) => {
   const [stats, setStats] = useState({
     totalPlayers: 0,
+    totalMarketValue: 0,
+    topPerformers: [] as any[],
+    topValued: [] as any[],
     activeMatches: 0,
     avgMatchScore: 0,
     recentActivity: []
@@ -22,11 +25,22 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveView }) => {
 
   const fetchDashboardData = async () => {
     try {
-      // Fetch actual data from API
-      const players = await api.players.getAll({ limit: 100 })
+      // Fetch actual data from API (pipeline-produced players)
+      const players = await api.players.getAll({ limit: 500 })
+      const withIndex = players.filter((p: any) => p.performanceIndex?.value)
+      const topPerformers = [...withIndex]
+        .sort((a: any, b: any) => b.performanceIndex.value - a.performanceIndex.value)
+        .slice(0, 5)
+      const topValued = [...players]
+        .sort((a: any, b: any) => (b.marketValue || 0) - (a.marketValue || 0))
+        .slice(0, 3)
+      const totalMarketValue = players.reduce((s: number, p: any) => s + (p.marketValue || 0), 0)
       setStats(prev => ({
         ...prev,
-        totalPlayers: players.length
+        totalPlayers: players.length,
+        totalMarketValue,
+        topPerformers,
+        topValued,
       }))
     } catch (error) {
       console.error('Error fetching dashboard data:', error)
@@ -66,7 +80,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveView }) => {
     },
     {
       title: 'Market Value',
-      value: '€250M',
+      value: `€${(stats.totalMarketValue / 1_000_000_000).toFixed(2)}B`,
       change: '+15%',
       icon: DollarSign,
       color: 'yellow'
@@ -103,27 +117,26 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveView }) => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Recent Matches */}
         <div className="lg:col-span-2 bg-white rounded-lg shadow p-6">
-          <h2 className="text-xl font-semibold mb-4">Recent Matches</h2>
+          <h2 className="text-xl font-semibold mb-4">Highest Valued Players</h2>
           <div className="space-y-4">
-            {[1, 2, 3].map((item) => (
-              <div key={item} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+            {stats.topValued.map((p: any) => (
+              <div key={p.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                 <div className="flex items-center gap-4">
                   <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
                     <Users className="w-5 h-5 text-blue-600" />
                   </div>
                   <div>
-                    <p className="font-medium">Player {item} matched with Team {item}</p>
-                    <p className="text-sm text-gray-600">Match Score: {85 + item}%</p>
+                    <p className="font-medium">{p.name}</p>
+                    <p className="text-sm text-gray-600">
+                      {p.position} • {p.currentTeam} • €{((p.marketValue || 0) / 1_000_000).toFixed(1)}M
+                    </p>
                   </div>
                 </div>
-                <button 
-                  onClick={handleViewReport}
-                  className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-                >
-                  View Report
-                </button>
               </div>
             ))}
+            {stats.topValued.length === 0 && (
+              <p className="text-sm text-gray-500">Loading players...</p>
+            )}
           </div>
         </div>
 
@@ -131,18 +144,23 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveView }) => {
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-xl font-semibold mb-4">Top Performers</h2>
           <div className="space-y-3">
-            {[1, 2, 3, 4, 5].map((item) => (
-              <div key={item} className="flex items-center justify-between">
+            {stats.topPerformers.map((p: any) => (
+              <div key={p.id} className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 bg-gray-200 rounded-full"></div>
                   <div>
-                    <p className="text-sm font-medium">Player {item}</p>
-                    <p className="text-xs text-gray-600">Performance: {90 - item * 2}%</p>
+                    <p className="text-sm font-medium">{p.name}</p>
+                    <p className="text-xs text-gray-600">
+                      {p.position} • Index: {p.performanceIndex.value.toFixed(1)}
+                    </p>
                   </div>
                 </div>
                 <Award className="w-4 h-4 text-yellow-500" />
               </div>
             ))}
+            {stats.topPerformers.length === 0 && (
+              <p className="text-sm text-gray-500">Loading...</p>
+            )}
           </div>
         </div>
       </div>
