@@ -181,6 +181,37 @@ class PlayerTeamMatcher:
 
         return float(np.mean(components)) if components else 0.6
 
+    # Position-aware reference values (per 90) used to normalize performance.
+    # Declared curation: elite-ish targets per role, not scraped data.
+    POSITION_METRICS = {
+        "attack": [
+            ("shooting", "goals_per_90", 0.5),
+            ("shooting", "assists_per_90", 0.3),
+            ("shooting", "shots_per_90", 3.0),
+            ("shooting", "xG_per_shot", 0.15),
+            ("passing", "key_passes_per_90", 2.0),
+        ],
+        "midfield": [
+            ("passing", "completion_rate", 0.85),
+            ("passing", "progressive_passes_per_90", 6.0),
+            ("passing", "key_passes_per_90", 1.8),
+            ("defensive", "tackles_per_90", 2.5),
+            ("defensive", "interceptions_per_90", 2.5),
+        ],
+        "defense": [
+            ("defensive", "tackles_per_90", 3.0),
+            ("defensive", "interceptions_per_90", 3.0),
+            ("passing", "completion_rate", 0.85),
+            ("passing", "progressive_passes_per_90", 4.0),
+        ],
+    }
+
+    POSITION_GROUP = {
+        "ST": "attack", "RW": "attack", "LW": "attack", "CAM": "attack",
+        "CM": "midfield", "CDM": "midfield", "RM": "midfield", "LM": "midfield",
+        "CB": "defense", "RB": "defense", "LB": "defense", "GK": "defense",
+    }
+
     def calculate_performance_fit(self, player: Player, team: Team) -> float:
         """Score the player's output against role-appropriate expectations.
 
