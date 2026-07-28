@@ -126,46 +126,60 @@ class PlayerTeamMatcher:
             "potential_growth": 0.15,
         }
 
+    # Positions a player can credibly cover beyond their primary one
+    ADJACENT_POSITIONS = {
+        "ST": ["CAM", "RW", "LW"], "CAM": ["CM", "ST", "RW", "LW"],
+        "RW": ["LW", "ST", "CAM", "RM"], "LW": ["RW", "ST", "CAM", "LM"],
+        "CM": ["CAM", "CDM", "RM", "LM"], "CDM": ["CM", "CB"],
+        "CB": ["CDM", "RB", "LB"], "RB": ["LB", "CB", "RM"], "LB": ["RB", "CB", "LM"],
+    }
+
     def calculate_tactical_fit(self, player: Player, team: Team) -> float:
-        """Calculate how well player fits team's tactical style"""
-        # Simplified tactical fit based on position and style
-        position_match = 1.0 if player.position in team.position_needs else 0.5
+        """How well the player suits the team's needs and playing style.
 
-        # Style compatibility (simplified)
-        style_score = 0.7  # Placeholder for actual style analysis
+        Replaces the previous hardcoded style placeholder: the style component
+        now compares the player's actual metrics against the club's declared
+        possession / pressing profile.
+        """
+        needs = team.position_needs or []
+        if player.position in needs:
+            position_match = 1.0
+        elif any(p in needs for p in self.ADJACENT_POSITIONS.get(player.position, [])):
+            position_match = 0.75          # can adapt to an adjacent role
+        else:
+            position_match = 0.4
 
+        style_score = self._calculate_style_score(player, team)
         return position_match * 0.6 + style_score * 0.4
 
-    # Position-aware reference values (per 90) used to normalize performance.
-    # Declared curation: elite-ish targets per role, not scraped data.
-    POSITION_METRICS = {
-        "attack": [
-            ("shooting", "goals_per_90", 0.5),
-            ("shooting", "assists_per_90", 0.3),
-            ("shooting", "shots_per_90", 3.0),
-            ("shooting", "xG_per_shot", 0.15),
-            ("passing", "key_passes_per_90", 2.0),
-        ],
-        "midfield": [
-            ("passing", "completion_rate", 0.85),
-            ("passing", "progressive_passes_per_90", 6.0),
-            ("passing", "key_passes_per_90", 1.8),
-            ("defensive", "tackles_per_90", 2.5),
-            ("defensive", "interceptions_per_90", 2.5),
-        ],
-        "defense": [
-            ("defensive", "tackles_per_90", 3.0),
-            ("defensive", "interceptions_per_90", 3.0),
-            ("passing", "completion_rate", 0.85),
-            ("passing", "progressive_passes_per_90", 4.0),
-        ],
-    }
+    def _calculate_style_score(self, player: Player, team: Team) -> float:
+        """Match player output against the club's tactical identity."""
+        style = team.playing_style or {}
+        metrics = player.metrics or {}
+        if not style or not metrics:
+            return 0.6                      # neutral when the profile is unknown
 
-    POSITION_GROUP = {
-        "ST": "attack", "RW": "attack", "LW": "attack", "CAM": "attack",
-        "CM": "midfield", "CDM": "midfield", "RM": "midfield", "LM": "midfield",
-        "CB": "defense", "RB": "defense", "LB": "defense", "GK": "defense",
-    }
+        passing = metrics.get("passing", {})
+        defensive = metrics.get("defensive", {})
+        components = []
+
+        # Possession sides need secure, progressive passers
+        possession = style.get("possession")
+        if possession is not None:
+            completion = passing.get("completion_rate") or 0
+            progressive = passing.get("progressive_passes_per_90") or 0
+            passing_quality = min(completion / 0.85, 1.0) * 0.6 + min(progressive / 6.0, 1.0) * 0.4
+            # weight the requirement by how possession-dominant the club is
+            components.append(passing_quality * possession + (1 - possession) * 0.6)
+
+        # Pressing sides need players who win the ball back
+        pressing = style.get("pressing_intensity")
+        if pressing is not None:
+            actions = (defensive.get("tackles_per_90") or 0) + (defensive.get("interceptions_per_90") or 0)
+            work_rate = min(actions / 4.0, 1.0)
+            components.append(work_rate * pressing + (1 - pressing) * 0.6)
+
+        return float(np.mean(components)) if components else 0.6
 
     def calculate_performance_fit(self, player: Player, team: Team) -> float:
         """Score the player's output against role-appropriate expectations.
