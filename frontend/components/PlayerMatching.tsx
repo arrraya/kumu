@@ -190,10 +190,16 @@ const PlayerMatching: React.FC<PlayerMatchingProps> = ({
                   <div className="flex-1">
                     <h2 className="text-2xl font-bold text-gray-900">{selectedPlayer.name}</h2>
                     <div className="text-gray-600 mt-1">
-                      {selectedPlayer.position} • {selectedPlayer.age} years • {selectedPlayer.nationality}
+                      {selectedPlayer.position} • {selectedPlayer.nationality}
+                      <span className="text-gray-400" title="Age not available in the current data source">
+                        {' '}• age n/a
+                      </span>
                     </div>
                     <div className="text-gray-600">
-                      €{(selectedPlayer.marketValue / 1000000).toFixed(1)}M • {selectedPlayer.currentTeam}
+                      €{(selectedPlayer.marketValue / 1000000).toFixed(1)}M
+                      <span className="text-gray-400 text-sm" title="Kumu-estimated value derived from the performance index">
+                        {' '}(estimated)
+                      </span>
                     </div>
                   </div>
                 </div>

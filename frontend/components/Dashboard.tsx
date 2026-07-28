@@ -60,28 +60,24 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveView }) => {
     {
       title: 'Total Players',
       value: stats.totalPlayers.toString(),
-      change: '+12%',
       icon: Users,
       color: 'blue'
     },
     {
       title: 'Active Matches',
       value: stats.activeMatches.toString(),
-      change: '+8%',
       icon: Target,
       color: 'green'
     },
     {
       title: 'Avg Match Score',
       value: `${stats.avgMatchScore}%`,
-      change: '+5%',
       icon: Activity,
       color: 'purple'
     },
     {
       title: 'Market Value',
       value: `€${(stats.totalMarketValue / 1_000_000_000).toFixed(2)}B`,
-      change: '+15%',
       icon: DollarSign,
       color: 'yellow'
     }
@@ -104,7 +100,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveView }) => {
                 <div className={`p-3 rounded-lg bg-${stat.color}-100`}>
                   <Icon className={`w-6 h-6 text-${stat.color}-600`} />
                 </div>
-                <span className="text-green-600 text-sm font-medium">{stat.change}</span>
+
               </div>
               <h3 className="text-2xl font-bold text-gray-900">{stat.value}</h3>
               <p className="text-gray-600 text-sm mt-1">{stat.title}</p>

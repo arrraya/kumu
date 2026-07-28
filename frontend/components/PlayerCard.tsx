@@ -30,7 +30,7 @@ const PlayerCard: React.FC<PlayerCardProps> = ({ player, onClick, isSelected }) 
           </div>
           <div>
             <h3 className="font-semibold text-lg">{player.name}</h3>
-            <p className="text-sm text-gray-500">{player.position} • {player.age} years</p>
+            <p className="text-sm text-gray-500">{player.position}</p>
           </div>
         </div>
       </div>
@@ -39,7 +39,7 @@ const PlayerCard: React.FC<PlayerCardProps> = ({ player, onClick, isSelected }) 
         <div className="flex items-center gap-2">
           <Activity className="w-3 h-3 text-gray-400" />
           <span className="text-gray-600">
-            Index: {performanceValue.toFixed(1)}
+            {performanceValue > 0 ? `Index: ${performanceValue.toFixed(1)}` : 'Index: not enough matches'}
           </span>
         </div>
         <div className={`flex items-center gap-1 ${
