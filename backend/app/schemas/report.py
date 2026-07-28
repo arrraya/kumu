@@ -48,12 +48,16 @@ class MarketAnalysis(BaseModel):
     value_assessment: Dict[str, Any]
     value_projections: Dict[str, Dict[str, Any]]
     roi_analysis: Dict[str, Any]
+    comparable_transfers: Optional[List[Dict[str, Any]]] = None
+    contract_recommendations: Optional[Dict[str, Any]] = None
+    financial_risk_assessment: Optional[Dict[str, Any]] = None
 
 
 class ComparisonAnalysis(BaseModel):
     squad_comparison: Dict[str, Any]
     league_comparison: Dict[str, Any]
     upgrade_assessment: str
+    historical_comparison: Optional[Dict[str, Any]] = None
 
 
 class RiskAssessment(BaseModel):
