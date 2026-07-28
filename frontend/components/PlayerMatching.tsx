@@ -59,6 +59,7 @@ const PlayerMatching: React.FC<PlayerMatchingProps> = ({
     try {
       setLoading(true);
       const data = await api.players.getAll({
+        limit: 500,
         position: filters.position || undefined,
         min_age: filters.minAge || undefined,
         max_age: filters.maxAge || undefined,

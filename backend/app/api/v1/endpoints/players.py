@@ -11,7 +11,7 @@ router = APIRouter()
 @router.get("/", response_model=List[player_schemas.Player])
 def get_players(
     skip: int = 0,
-    limit: int = 20,
+    limit: int = 500,
     position: Optional[str] = None,
     min_age: Optional[int] = None,
     max_age: Optional[int] = None,
