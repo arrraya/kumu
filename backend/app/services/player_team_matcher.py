@@ -136,34 +136,67 @@ class PlayerTeamMatcher:
 
         return position_match * 0.6 + style_score * 0.4
 
+    # Position-aware reference values (per 90) used to normalize performance.
+    # Declared curation: elite-ish targets per role, not scraped data.
+    POSITION_METRICS = {
+        "attack": [
+            ("shooting", "goals_per_90", 0.5),
+            ("shooting", "assists_per_90", 0.3),
+            ("shooting", "shots_per_90", 3.0),
+            ("shooting", "xG_per_shot", 0.15),
+            ("passing", "key_passes_per_90", 2.0),
+        ],
+        "midfield": [
+            ("passing", "completion_rate", 0.85),
+            ("passing", "progressive_passes_per_90", 6.0),
+            ("passing", "key_passes_per_90", 1.8),
+            ("defensive", "tackles_per_90", 2.5),
+            ("defensive", "interceptions_per_90", 2.5),
+        ],
+        "defense": [
+            ("defensive", "tackles_per_90", 3.0),
+            ("defensive", "interceptions_per_90", 3.0),
+            ("passing", "completion_rate", 0.85),
+            ("passing", "progressive_passes_per_90", 4.0),
+        ],
+    }
+
+    POSITION_GROUP = {
+        "ST": "attack", "RW": "attack", "LW": "attack", "CAM": "attack",
+        "CM": "midfield", "CDM": "midfield", "RM": "midfield", "LM": "midfield",
+        "CB": "defense", "RB": "defense", "LB": "defense", "GK": "defense",
+    }
+
     def calculate_performance_fit(self, player: Player, team: Team) -> float:
-        """Calculate if player meets team's performance requirements"""
+        """Score the player's output against role-appropriate expectations.
+
+        Previously this only checked pass completion and defensive actions,
+        which structurally penalised attackers (a striker doesn't tackle).
+        Now each position group is judged on the metrics that matter for it.
+        """
         if not player.metrics:
             return 0.5
 
+        group = self.POSITION_GROUP.get(player.position, "midfield")
         scores = []
+        for category, metric, reference in self.POSITION_METRICS[group]:
+            value = player.metrics.get(category, {}).get(metric)
+            if value is None or reference <= 0:
+                continue
+            scores.append(min(float(value) / reference, 1.0))
 
-        # Check passing requirements
-        if "min_pass_completion" in team.performance_requirements:
-            pass_score = min(
-                player.metrics["passing"]["completion_rate"]
-                / team.performance_requirements["min_pass_completion"],
-                1.0,
-            )
-            scores.append(pass_score)
+        # Respect explicit team requirements when provided
+        reqs = team.performance_requirements or {}
+        if "min_pass_completion" in reqs and reqs["min_pass_completion"]:
+            cr = player.metrics.get("passing", {}).get("completion_rate")
+            if cr is not None:
+                scores.append(min(float(cr) / reqs["min_pass_completion"], 1.0))
+        if "min_defensive_actions" in reqs and reqs["min_defensive_actions"]:
+            d = player.metrics.get("defensive", {})
+            actions = (d.get("tackles_per_90") or 0) + (d.get("interceptions_per_90") or 0)
+            scores.append(min(actions / reqs["min_defensive_actions"], 1.0))
 
-        # Check defensive requirements
-        if "min_defensive_actions" in team.performance_requirements:
-            defensive_actions = (
-                player.metrics["defensive"]["tackles_per_90"]
-                + player.metrics["defensive"]["interceptions_per_90"]
-            )
-            def_score = min(
-                defensive_actions / team.performance_requirements["min_defensive_actions"], 1.0
-            )
-            scores.append(def_score)
-
-        return np.mean(scores) if scores else 0.7
+        return float(np.mean(scores)) if scores else 0.6
 
     def calculate_financial_fit(self, player: Player, team: Team) -> float:
         """Calculate if player fits within team's budget"""
