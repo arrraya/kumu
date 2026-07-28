@@ -41,6 +41,34 @@ class ScoutingReportGenerator:
             "negotiation_strategy",
         ]
 
+    def _query_db(self, sql: str, params: dict) -> list:
+        """Run a read-only query against Kumu's database; [] on any failure."""
+        try:
+            from sqlalchemy import text
+            from app.db.database import SessionLocal
+
+            session = SessionLocal()
+            try:
+                return session.execute(text(sql), params).fetchall()
+            finally:
+                session.close()
+        except Exception:
+            return []
+
+    def _positional_peers(self, position: str, exclude_name: str, limit: int = 3) -> list:
+        """Real players in the same position, closest by performance index."""
+        return self._query_db(
+            """
+            SELECT name, current_team, market_value, performance_index
+            FROM players
+            WHERE position = :position AND name <> :name
+              AND performance_index IS NOT NULL
+            ORDER BY ABS(COALESCE((performance_index->>'value')::float, 0) - :idx) ASC
+            LIMIT :limit
+            """,
+            {"position": position, "name": exclude_name, "idx": 0.0, "limit": limit},
+        )
+
     def _load_benchmarks_from_db(self) -> Dict:
         """Fetch pipeline-produced benchmarks from the benchmarks table.
 
@@ -701,20 +729,24 @@ class ScoutingReportGenerator:
         """Project future market value"""
         projections = {}
 
+        cumulative_factor = 1.0
         for year in range(1, 6):
-            age_factor = 1.0
-            if age + year < 24:
-                age_factor = 1.15  # Young player growth
-            elif age + year <= 27:
-                age_factor = 1.05  # Prime years
-            elif age + year <= 30:
-                age_factor = 0.95  # Slight decline
+            future_age = age + year
+            if future_age < 24:
+                yearly_factor = 1.15  # Young player growth
+            elif future_age <= 27:
+                yearly_factor = 1.05  # Prime years
+            elif future_age <= 30:
+                yearly_factor = 0.95  # Slight decline
             else:
-                age_factor = 0.85  # Significant decline
+                yearly_factor = 0.85  # Significant decline
 
+            # Compound each year at its own rate instead of applying the final
+            # regime retroactively to every prior year.
+            cumulative_factor *= yearly_factor
             performance_factor = 1.0 + (performance_index - 70) / 100
 
-            projected_value = current_value * (age_factor**year) * performance_factor
+            projected_value = current_value * cumulative_factor * performance_factor
             projections[f"year_{year}"] = {
                 "value": projected_value,
                 "age": age + year,
@@ -724,35 +756,38 @@ class ScoutingReportGenerator:
         return projections
 
     def _find_comparable_transfers(self, player_data: Dict) -> List[Dict]:
-        """Find comparable recent transfers"""
-        # In production, query database for similar transfers
-        # This is mock data for demonstration
-        position = player_data["position"]
-        age = player_data["age"]
+        """Real positional peers from Kumu's own database (no mock data).
 
-        comparables = [
-            {
-                "player": "Player A",
-                "age": age - 1,
-                "position": position,
-                "from_club": "Club X",
-                "to_club": "Club Y",
-                "transfer_fee": player_data["market_value"] * 0.9,
-                "date": "2024-07",
-                "performance_index": 75,
-            },
-            {
-                "player": "Player B",
-                "age": age + 1,
-                "position": position,
-                "from_club": "Club M",
-                "to_club": "Club N",
-                "transfer_fee": player_data["market_value"] * 1.1,
-                "date": "2024-08",
-                "performance_index": 79,
-            },
-        ]
+        Note: values are Kumu estimates derived from performance, so these are
+        peers for context, not observed transfer fees.
+        """
+        position = player_data.get("position") or ""
+        name = player_data.get("name") or ""
+        idx = (player_data.get("performance_index") or {}).get("value", 0) or 0
 
+        rows = self._query_db(
+            """
+            SELECT name, current_team, market_value, performance_index
+            FROM players
+            WHERE position = :position AND name <> :name
+              AND performance_index IS NOT NULL AND market_value IS NOT NULL
+            ORDER BY ABS(COALESCE((performance_index->>'value')::float, 0) - :idx) ASC
+            LIMIT 3
+            """,
+            {"position": position, "name": name, "idx": float(idx)},
+        )
+
+        comparables = []
+        for r in rows:
+            pi = r[3] if isinstance(r[3], dict) else {}
+            comparables.append({
+                "player": r[0],
+                "position": position,
+                "from_club": r[1],
+                "transfer_fee": float(r[2] or 0),
+                "performance_index": pi.get("value"),
+                "basis": "Kumu database peer (estimated value)",
+            })
         return comparables
 
     def _assess_value(self, current_value: float, comparable_players: List[Dict]) -> Dict:
@@ -1010,51 +1045,92 @@ class ScoutingReportGenerator:
         }
 
     def _compare_with_squad(self, player_data: Dict, team_data: Dict) -> Dict:
-        """Compare with current squad players in same position"""
-        # Mock comparison - in production, would query actual squad data
-        position = player_data["position"]
+        """Compare against real positional peers in Kumu's database.
 
-        current_players = [
-            {"name": "Current Player 1", "performance_index": 72, "age": 26},
-            {"name": "Current Player 2", "performance_index": 68, "age": 30},
-        ]
+        Club squads are not available in the current dataset, so this is an
+        explicit peer comparison rather than a squad one.
+        """
+        position = player_data.get("position") or ""
+        name = player_data.get("name") or ""
+        player_idx = float((player_data.get("performance_index") or {}).get("value", 0) or 0)
 
-        avg_current_performance = np.mean([p["performance_index"] for p in current_players])
-        improvement = (
-            (player_data["performance_index"]["value"] - avg_current_performance)
-            / avg_current_performance
-        ) * 100
+        rows = self._query_db(
+            """
+            SELECT name, current_team, performance_index
+            FROM players
+            WHERE position = :position AND name <> :name
+              AND performance_index IS NOT NULL
+            ORDER BY COALESCE((performance_index->>'value')::float, 0) DESC
+            LIMIT 5
+            """,
+            {"position": position, "name": name},
+        )
+
+        peers = []
+        for r in rows:
+            pi = r[2] if isinstance(r[2], dict) else {}
+            if pi.get("value") is not None:
+                peers.append({"name": r[0], "team": r[1], "performance_index": pi["value"]})
+
+        if not peers:
+            return {
+                "current_options": [],
+                "performance_improvement": "n/a",
+                "immediate_impact": "No peer data available",
+                "position_upgrade": False,
+                "basis": "no positional peers found",
+            }
+
+        avg_peer = float(np.mean([p["performance_index"] for p in peers]))
+        improvement = ((player_idx - avg_peer) / avg_peer) * 100 if avg_peer else 0.0
 
         return {
-            "current_options": current_players,
+            "current_options": peers,
             "performance_improvement": f"{improvement:+.1f}%",
             "immediate_impact": (
-                "Likely starter"
-                if improvement > 10
-                else "Rotation option" if improvement > 0 else "Squad depth"
+                "Likely starter" if improvement > 10
+                else "Rotation option" if improvement > 0
+                else "Squad depth"
             ),
             "position_upgrade": improvement > 15,
+            "basis": f"vs top {len(peers)} {position} peers in Kumu database",
         }
 
     def _compare_with_league_peers(self, player_data: Dict, team_data: Dict) -> Dict:
-        """Compare with top performers in the league"""
-        position = player_data["position"]
-        league = team_data["league"]
+        """Real percentile of the player's index among same-position players."""
+        position = player_data.get("position") or ""
+        player_idx = float((player_data.get("performance_index") or {}).get("value", 0) or 0)
 
-        # Mock data - in production, would query league statistics
-        league_percentile = self.calculate_percentile(
-            player_data["performance_index"]["value"], "overall_performance", position, league
+        rows = self._query_db(
+            """
+            SELECT COALESCE((performance_index->>'value')::float, 0) AS v
+            FROM players
+            WHERE position = :position AND performance_index IS NOT NULL
+            """,
+            {"position": position},
         )
+        values = [float(r[0]) for r in rows if r[0] is not None]
+
+        if len(values) < 5:
+            return {
+                "league_percentile": None,
+                "vs_top_performers": "Insufficient peer data",
+                "statistical_rank": "n/a",
+                "elite_potential": False,
+            }
+
+        below = sum(1 for v in values if v < player_idx)
+        percentile = int(round((below / len(values)) * 100))
+        rank = max(1, int(round(len(values) * (100 - percentile) / 100)))
 
         return {
-            "league_percentile": league_percentile,
+            "league_percentile": percentile,
             "vs_top_performers": (
-                "Top tier"
-                if league_percentile >= 80
-                else "Upper mid-tier" if league_percentile >= 60 else "Mid-tier"
+                "Top tier" if percentile >= 80
+                else "Upper mid-tier" if percentile >= 60 else "Mid-tier"
             ),
-            "statistical_rank": f"Ranks approximately {11 - int(league_percentile/10)}th in position",
-            "elite_potential": league_percentile >= 75,
+            "statistical_rank": f"Ranks ~{rank} of {len(values)} {position}s in database",
+            "elite_potential": percentile >= 75,
         }
 
     def _historical_performance_comparison(self, player_data: Dict) -> Dict:
