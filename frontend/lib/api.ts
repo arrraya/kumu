@@ -105,6 +105,23 @@ export const apiService = {
       link.remove();
       window.URL.revokeObjectURL(url);
     }
+  },
+
+  market: {
+    list: async (params?: {
+      sort?: string; order?: string; position?: string; search?: string; limit?: number;
+    }) => {
+      const response = await api.get('/api/v1/market/', { params });
+      return response.data;
+    },
+    summary: async () => {
+      const response = await api.get('/api/v1/market/summary');
+      return response.data;
+    },
+    detail: async (playerId: number) => {
+      const response = await api.get(`/api/v1/market/${playerId}`);
+      return response.data;
+    }
   }
 };
 

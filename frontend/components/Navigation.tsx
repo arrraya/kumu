@@ -1,5 +1,5 @@
 'use client'
-import { Home, Search, FileText, BarChart3, Users } from 'lucide-react'
+import { Home, Search, FileText, BarChart3, Users, TrendingUp } from 'lucide-react'
 
 interface NavigationProps {
   activeView: string
@@ -11,7 +11,8 @@ export default function Navigation({ activeView, setActiveView }: NavigationProp
     { id: 'dashboard', name: 'Dashboard', icon: Home },
     { id: 'matching', name: 'Player Matching', icon: Search },
     { id: 'report', name: 'Scouting Report', icon: FileText },
-    { id: 'analytics', name: 'Analytics', icon: BarChart3 }
+    { id: 'analytics', name: 'Analytics', icon: BarChart3 },
+    { id: 'market', name: 'Market', icon: TrendingUp }
   ]
 
   return (
