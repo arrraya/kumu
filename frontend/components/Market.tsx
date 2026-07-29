@@ -1,35 +1,35 @@
 'use client'
 import React, { useEffect, useMemo, useState } from 'react'
+import { Star, Search, Wallet, X, ArrowUpRight, ArrowDownRight } from 'lucide-react'
 import {
-  TrendingUp, TrendingDown, Star, Search, Wallet, X, ArrowUpRight, ArrowDownRight,
-} from 'lucide-react'
-import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceDot,
 } from 'recharts'
 import { api } from '@/lib/api'
 
 const WATCHLIST_KEY = 'kumu_watchlist'
-const PORTFOLIO_KEY = 'kumu_portfolio'
-const STARTING_CASH = 500_000_000   // €500M virtual budget
+const PORTFOLIO_KEY = 'kumu_portfolio_v2'
+const STARTING_CASH = 500_000_000
 
-type Row = {
+/**
+ * Positions are ANCHORED to a point in the player's price series
+ * (entry_match + entry_price), and P&L is always measured against the series'
+ * current tip. Today the tip is the last played match, so this behaves as
+ * backtesting. When live data starts arriving the tip advances on its own and
+ * P&L updates with no changes here — same model, both modes.
+ */
+type Holding = {
   player_id: number
   name: string
-  position: string
-  team: string
-  nationality: string
-  current_price: number
-  opening_price: number
-  total_change_pct: number
-  last_change_pct: number
-  high: number
-  low: number
-  volatility: number
-  matches: number
-  performance_index: number | null
+  shares: number
+  entry_match: number
+  entry_price: number
 }
 
-type Holding = { player_id: number; name: string; shares: number; buy_price: number }
+type Row = {
+  player_id: number; name: string; position: string; team: string; nationality: string
+  current_price: number; opening_price: number; total_change_pct: number
+  last_change_pct: number; high: number; low: number; volatility: number; matches: number
+}
 
 const money = (v: number) => `€${(v / 1_000_000).toFixed(1)}M`
 const pct = (v: number) => `${v > 0 ? '+' : ''}${v.toFixed(1)}%`
@@ -38,16 +38,10 @@ const load = <T,>(key: string, fallback: T): T => {
   try {
     const raw = typeof window !== 'undefined' ? window.localStorage.getItem(key) : null
     return raw ? (JSON.parse(raw) as T) : fallback
-  } catch {
-    return fallback
-  }
+  } catch { return fallback }
 }
 const save = (key: string, value: unknown) => {
-  try {
-    window.localStorage.setItem(key, JSON.stringify(value))
-  } catch {
-    /* storage unavailable */
-  }
+  try { window.localStorage.setItem(key, JSON.stringify(value)) } catch { /* noop */ }
 }
 
 const Market: React.FC = () => {
@@ -66,6 +60,7 @@ const Market: React.FC = () => {
 
   const [selected, setSelected] = useState<any>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [entryMatch, setEntryMatch] = useState<number | null>(null)
 
   useEffect(() => {
     setWatchlist(load<number[]>(WATCHLIST_KEY, []))
@@ -88,9 +83,7 @@ const Market: React.FC = () => {
         setSummary(sum)
       } catch (e) {
         console.error('Market load failed:', e)
-      } finally {
-        setLoading(false)
-      }
+      } finally { setLoading(false) }
     }
     const t = setTimeout(run, search ? 300 : 0)
     return () => clearTimeout(t)
@@ -98,52 +91,56 @@ const Market: React.FC = () => {
 
   const toggleWatch = (id: number) => {
     const next = watchlist.includes(id) ? watchlist.filter((w) => w !== id) : [...watchlist, id]
-    setWatchlist(next)
-    save(WATCHLIST_KEY, next)
+    setWatchlist(next); save(WATCHLIST_KEY, next)
   }
 
-  const persistPortfolio = (holdings: Holding[], newCash: number) => {
-    setPortfolio(holdings)
-    setCash(newCash)
+  const persist = (holdings: Holding[], newCash: number) => {
+    setPortfolio(holdings); setCash(newCash)
     save(PORTFOLIO_KEY, { holdings, cash: newCash })
-  }
-
-  const buy = (row: Row) => {
-    if (cash < row.current_price) return
-    const existing = portfolio.find((h) => h.player_id === row.player_id)
-    const holdings = existing
-      ? portfolio.map((h) =>
-          h.player_id === row.player_id
-            ? {
-                ...h,
-                shares: h.shares + 1,
-                buy_price: (h.buy_price * h.shares + row.current_price) / (h.shares + 1),
-              }
-            : h,
-        )
-      : [...portfolio, { player_id: row.player_id, name: row.name, shares: 1, buy_price: row.current_price }]
-    persistPortfolio(holdings, cash - row.current_price)
-  }
-
-  const sell = (row: Row) => {
-    const existing = portfolio.find((h) => h.player_id === row.player_id)
-    if (!existing) return
-    const holdings =
-      existing.shares > 1
-        ? portfolio.map((h) => (h.player_id === row.player_id ? { ...h, shares: h.shares - 1 } : h))
-        : portfolio.filter((h) => h.player_id !== row.player_id)
-    persistPortfolio(holdings, cash + row.current_price)
   }
 
   const openDetail = async (id: number) => {
     try {
-      setDetailLoading(true)
-      setSelected(await api.market.detail(id))
+      setDetailLoading(true); setSelected(null); setEntryMatch(null)
+      const data = await api.market.detail(id)
+      setSelected(data)
+      setEntryMatch(data.series?.length ? data.series[0].match : null)
     } catch (e) {
       console.error('Detail failed:', e)
-    } finally {
-      setDetailLoading(false)
-    }
+    } finally { setDetailLoading(false) }
+  }
+
+  const buyAtEntry = () => {
+    if (!selected || entryMatch == null) return
+    const point = (selected.series || []).find((s: any) => s.match === entryMatch)
+    if (!point) return
+    const cost = point.price
+    if (cash < cost) return
+
+    const existing = portfolio.find((h) => h.player_id === selected.player_id)
+    const holdings = existing
+      ? portfolio.map((h) => h.player_id === selected.player_id
+          ? {
+              ...h,
+              shares: h.shares + 1,
+              entry_price: (h.entry_price * h.shares + cost) / (h.shares + 1),
+              entry_match: h.entry_match,
+            }
+          : h)
+      : [...portfolio, {
+          player_id: selected.player_id, name: selected.name,
+          shares: 1, entry_match: entryMatch, entry_price: cost,
+        }]
+    persist(holdings, cash - cost)
+  }
+
+  const sellOne = (playerId: number, currentPrice: number) => {
+    const existing = portfolio.find((h) => h.player_id === playerId)
+    if (!existing) return
+    const holdings = existing.shares > 1
+      ? portfolio.map((h) => h.player_id === playerId ? { ...h, shares: h.shares - 1 } : h)
+      : portfolio.filter((h) => h.player_id !== playerId)
+    persist(holdings, cash + currentPrice)
   }
 
   const priceById = useMemo(() => {
@@ -152,11 +149,12 @@ const Market: React.FC = () => {
     return m
   }, [rows])
 
+  // Current value uses the series tip (today: last match; live: latest match).
   const holdingsValue = portfolio.reduce(
-    (s, h) => s + (priceById[h.player_id]?.current_price ?? h.buy_price) * h.shares, 0,
-  )
-  const invested = portfolio.reduce((s, h) => s + h.buy_price * h.shares, 0)
+    (s, h) => s + (priceById[h.player_id]?.current_price ?? h.entry_price) * h.shares, 0)
+  const invested = portfolio.reduce((s, h) => s + h.entry_price * h.shares, 0)
   const pnl = holdingsValue - invested
+  const pnlPct = invested > 0 ? (pnl / invested) * 100 : 0
 
   const visible = useMemo(() => {
     if (tab === 'watchlist') return rows.filter((r) => watchlist.includes(r.player_id))
@@ -166,12 +164,15 @@ const Market: React.FC = () => {
 
   const Delta: React.FC<{ value: number }> = ({ value }) => (
     <span className={`inline-flex items-center gap-1 font-medium ${
-      value > 0 ? 'text-green-600' : value < 0 ? 'text-red-600' : 'text-gray-500'
-    }`}>
+      value > 0 ? 'text-green-600' : value < 0 ? 'text-red-600' : 'text-gray-500'}`}>
       {value > 0 ? <ArrowUpRight className="w-3 h-3" /> : value < 0 ? <ArrowDownRight className="w-3 h-3" /> : null}
       {pct(value)}
     </span>
   )
+
+  const entryPoint = selected?.series?.find((s: any) => s.match === entryMatch)
+  const projectedPnl = entryPoint && selected
+    ? ((selected.current_price - entryPoint.price) / entryPoint.price) * 100 : 0
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -214,7 +215,7 @@ const Market: React.FC = () => {
           <div>
             <span className="text-sm text-gray-600">P&amp;L </span>
             <span className={`font-semibold ${pnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {pnl >= 0 ? '+' : '-'}{money(Math.abs(pnl))}
+              {pnl >= 0 ? '+' : '-'}{money(Math.abs(pnl))} ({pct(pnlPct)})
             </span>
           </div>
         </div>
@@ -223,40 +224,29 @@ const Market: React.FC = () => {
       <div className="bg-white rounded-lg shadow mb-6">
         <div className="flex flex-wrap items-center gap-3 p-4 border-b">
           {(['market', 'watchlist', 'portfolio'] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
+            <button key={t} onClick={() => setTab(t)}
               className={`px-3 py-1.5 rounded-md text-sm font-medium capitalize ${
-                tab === t ? 'bg-green-50 text-green-700' : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
+                tab === t ? 'bg-green-50 text-green-700' : 'text-gray-600 hover:text-gray-900'}`}>
               {t}
               {t === 'watchlist' && watchlist.length > 0 && ` (${watchlist.length})`}
               {t === 'portfolio' && portfolio.length > 0 && ` (${portfolio.length})`}
             </button>
           ))}
-
           <div className="flex-1" />
-
           <div className="relative">
             <Search className="w-4 h-4 text-gray-400 absolute left-2 top-2.5" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+            <input value={search} onChange={(e) => setSearch(e.target.value)}
               placeholder="Search player"
-              className="pl-8 pr-3 py-2 border rounded-md text-sm w-44"
-            />
+              className="pl-8 pr-3 py-2 border rounded-md text-sm w-44" />
           </div>
           <select value={position} onChange={(e) => setPosition(e.target.value)}
             className="border rounded-md text-sm px-2 py-2">
             <option value="">All positions</option>
             {['GK','CB','RB','LB','CDM','CM','CAM','RW','LW','ST'].map((p) => (
-              <option key={p} value={p}>{p}</option>
-            ))}
+              <option key={p} value={p}>{p}</option>))}
           </select>
-          <select value={`${sort}:${order}`} onChange={(e) => {
-              const [s, o] = e.target.value.split(':'); setSort(s); setOrder(o)
-            }}
+          <select value={`${sort}:${order}`}
+            onChange={(e) => { const [s, o] = e.target.value.split(':'); setSort(s); setOrder(o) }}
             className="border rounded-md text-sm px-2 py-2">
             <option value="change:desc">Top gainers</option>
             <option value="change:asc">Top fallers</option>
@@ -272,7 +262,7 @@ const Market: React.FC = () => {
         ) : visible.length === 0 ? (
           <div className="p-8 text-center text-gray-500">
             {tab === 'watchlist' ? 'Your watchlist is empty — star players to follow them.'
-              : tab === 'portfolio' ? 'No holdings yet — buy a player to start your portfolio.'
+              : tab === 'portfolio' ? 'No positions yet — open a player and pick an entry point.'
               : 'No players match these filters.'}
           </div>
         ) : (
@@ -293,20 +283,27 @@ const Market: React.FC = () => {
               <tbody>
                 {visible.map((r) => {
                   const held = portfolio.find((h) => h.player_id === r.player_id)
+                  const posPnl = held ? ((r.current_price - held.entry_price) / held.entry_price) * 100 : 0
                   return (
                     <tr key={r.player_id} className="border-t hover:bg-gray-50">
                       <td className="px-3 py-2">
                         <button onClick={() => toggleWatch(r.player_id)} title="Watch">
                           <Star className={`w-4 h-4 ${
-                            watchlist.includes(r.player_id) ? 'text-yellow-500 fill-yellow-400' : 'text-gray-300'
-                          }`} />
+                            watchlist.includes(r.player_id) ? 'text-yellow-500 fill-yellow-400' : 'text-gray-300'}`} />
                         </button>
                       </td>
                       <td className="px-3 py-2">
                         <button onClick={() => openDetail(r.player_id)} className="text-left">
                           <div className="font-medium text-gray-900 hover:text-green-700">{r.name}</div>
                           <div className="text-xs text-gray-500">
-                            {r.team}{held ? ` • ${held.shares} held` : ''}
+                            {r.team}
+                            {held && (
+                              <> • {held.shares} @ M{held.entry_match} {money(held.entry_price)}{' '}
+                                <span className={posPnl >= 0 ? 'text-green-600' : 'text-red-600'}>
+                                  ({pct(posPnl)})
+                                </span>
+                              </>
+                            )}
                           </div>
                         </button>
                       </td>
@@ -316,14 +313,10 @@ const Market: React.FC = () => {
                       <td className="px-3 py-2 text-right"><Delta value={r.last_change_pct} /></td>
                       <td className="px-3 py-2 text-right text-gray-500">{r.volatility.toFixed(1)}</td>
                       <td className="px-3 py-2 text-right whitespace-nowrap">
-                        <button onClick={() => buy(r)} disabled={cash < r.current_price}
-                          className="px-2 py-1 text-xs rounded bg-green-600 text-white disabled:opacity-40 mr-1">
-                          Buy
-                        </button>
-                        <button onClick={() => sell(r)} disabled={!held}
-                          className="px-2 py-1 text-xs rounded bg-gray-200 text-gray-700 disabled:opacity-40">
-                          Sell
-                        </button>
+                        <button onClick={() => openDetail(r.player_id)}
+                          className="px-2 py-1 text-xs rounded bg-green-600 text-white mr-1">Trade</button>
+                        <button onClick={() => sellOne(r.player_id, r.current_price)} disabled={!held}
+                          className="px-2 py-1 text-xs rounded bg-gray-200 text-gray-700 disabled:opacity-40">Sell</button>
                       </td>
                     </tr>
                   )
@@ -337,7 +330,8 @@ const Market: React.FC = () => {
       {(selected || detailLoading) && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50"
           onClick={() => setSelected(null)}>
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-6" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}>
             {detailLoading || !selected ? (
               <p className="text-gray-500">Loading…</p>
             ) : (
@@ -355,7 +349,7 @@ const Market: React.FC = () => {
                 <div className="flex flex-wrap gap-6 mb-4">
                   <div>
                     <div className="text-2xl font-bold">{money(selected.current_price)}</div>
-                    <div className="text-sm text-gray-600">Current</div>
+                    <div className="text-sm text-gray-600">Latest</div>
                   </div>
                   <div>
                     <div className={`text-2xl font-bold ${
@@ -370,17 +364,14 @@ const Market: React.FC = () => {
                   </div>
                 </div>
 
-                <ResponsiveContainer width="100%" height={220}>
+                <ResponsiveContainer width="100%" height={200}>
                   <LineChart
                     data={(selected.series || []).map((s: any) => ({
-                      label: `M${s.match}`,
-                      price: s.price / 1_000_000,
-                      change: s.change_pct,
-                      goals: s.goals,
-                      assists: s.assists,
+                      label: `M${s.match}`, match: s.match,
+                      price: s.price / 1_000_000, change: s.change_pct,
+                      goals: s.goals, assists: s.assists,
                     }))}
-                    margin={{ top: 10, right: 10, bottom: 5, left: 0 }}
-                  >
+                    margin={{ top: 10, right: 10, bottom: 5, left: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                     <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                     <YAxis tick={{ fontSize: 11 }} domain={['dataMin - 3', 'dataMax + 3']}
@@ -393,14 +384,58 @@ const Market: React.FC = () => {
                           <p className="font-medium">Match {String(label).replace('M', '')}</p>
                           <p className="text-green-700">€{d.price.toFixed(1)}M ({pct(d.change)})</p>
                           {(d.goals > 0 || d.assists > 0) && (
-                            <p className="text-gray-600">{d.goals}g • {d.assists}a</p>
-                          )}
+                            <p className="text-gray-600">{d.goals}g • {d.assists}a</p>)}
                         </div>
                       )
                     }} />
                     <Line type="monotone" dataKey="price" stroke="#16a34a" strokeWidth={2} dot={{ r: 3 }} />
+                    {entryPoint && (
+                      <ReferenceDot x={`M${entryPoint.match}`} y={entryPoint.price / 1_000_000}
+                        r={6} fill="#2563eb" stroke="white" strokeWidth={2} />
+                    )}
                   </LineChart>
                 </ResponsiveContainer>
+
+                <div className="mt-4 border-t pt-4">
+                  <div className="text-sm font-medium text-gray-800 mb-2">
+                    Entry point
+                    <span className="font-normal text-gray-500">
+                      {' '}— pick the match you would have bought at
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {(selected.series || []).map((s: any) => (
+                      <button key={s.match} onClick={() => setEntryMatch(s.match)}
+                        className={`px-2 py-1 rounded text-xs border ${
+                          entryMatch === s.match
+                            ? 'bg-blue-50 border-blue-400 text-blue-700 font-medium'
+                            : 'border-gray-200 text-gray-600 hover:border-gray-400'}`}>
+                        M{s.match} · {money(s.price)}
+                      </button>
+                    ))}
+                  </div>
+
+                  {entryPoint && (
+                    <div className="flex flex-wrap items-center gap-4 text-sm">
+                      <span className="text-gray-600">
+                        Entry {money(entryPoint.price)} → latest {money(selected.current_price)}
+                      </span>
+                      <span className={`font-semibold ${projectedPnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {pct(projectedPnl)}
+                      </span>
+                      <div className="flex-1" />
+                      <button onClick={buyAtEntry} disabled={cash < entryPoint.price}
+                        className="px-3 py-1.5 rounded bg-green-600 text-white text-sm disabled:opacity-40">
+                        Buy at M{entryPoint.match}
+                      </button>
+                      <button onClick={() => sellOne(selected.player_id, selected.current_price)}
+                        disabled={!portfolio.some((h) => h.player_id === selected.player_id)}
+                        className="px-3 py-1.5 rounded bg-gray-200 text-gray-700 text-sm disabled:opacity-40">
+                        Sell one
+                      </button>
+                    </div>
+                  )}
+                </div>
               </>
             )}
           </div>
