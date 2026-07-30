@@ -290,6 +290,55 @@ class PlayerTeamMatcher:
             },
         }
 
+    def calculate_fit_score(self, db, player_id, team_id) -> Dict:
+        """Score a player against a team by id, loading both from the database.
+
+        Three call sites (team_service, analytics_service x2) have always called
+        this method, but it did not exist — every call raised AttributeError.
+        team_service swallowed it in a try/except and returned nothing;
+        analytics_service surfaced it as a 500.
+        """
+        from app.db import models  # local import avoids a circular dependency
+
+        db_player = db.query(models.Player).filter(models.Player.id == int(player_id)).first()
+        db_team = db.query(models.Team).filter(models.Team.id == int(team_id)).first()
+        if not db_player or not db_team:
+            return {
+                "overall_score": 0.0,
+                "breakdown": {},
+                "error": "player or team not found",
+            }
+
+        player = Player(
+            player_id=str(db_player.id),
+            name=db_player.name or "",
+            age=db_player.age or 26,
+            position=db_player.position or "",
+        )
+        player.market_value = float(db_player.market_value or 0)
+        # Metrics may carry None for values the pipeline could not compute;
+        # the scoring maths needs numbers.
+        player.metrics = {
+            category: {k: (0.0 if v is None else v) for k, v in values.items()}
+            for category, values in (db_player.metrics or {}).items()
+            if isinstance(values, dict)
+        }
+        player.performance_history = db_player.performance_history or []
+
+        team = Team(
+            team_id=str(db_team.id),
+            name=db_team.name or "",
+            league=db_team.league or "",
+            budget=float(db_team.budget or 0),
+        )
+        team.formation = db_team.formation or "4-3-3"
+        team.playing_style = db_team.playing_style or {}
+        requirements = db_team.requirements or {}
+        team.position_needs = requirements.get("positions", [])
+        team.performance_requirements = requirements.get("performance", {})
+
+        return self.calculate_match_score(player, team)
+
     def find_matches(
         self, player: Player, teams: List[Team], min_score: float = 70.0
     ) -> List[Dict]:
