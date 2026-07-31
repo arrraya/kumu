@@ -41,6 +41,7 @@ def _to_matcher_player(db_player) -> MatcherPlayer:
     p.market_value = float(db_player.market_value or 0)
     p.metrics = _sanitize_metrics(db_player.metrics)
     p.performance_history = db_player.performance_history or []
+    p.performance_index = db_player.performance_index or None
     return p
 
 
@@ -57,6 +58,7 @@ def _to_matcher_team(db_team) -> MatcherTeam:
     reqs = db_team.requirements or {}
     t.position_needs = reqs.get("positions", [])
     t.performance_requirements = reqs.get("performance", {})
+    t.expected_index = reqs.get("expected_index")
     return t
 
 

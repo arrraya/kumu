@@ -13,6 +13,7 @@ class Player:
         self.metrics = {}
         self.performance_history = []
         self.market_value = 0
+        self.performance_index = None
         self.playing_style_vector = None
 
     def add_performance_data(self, match_data: Dict):
@@ -107,6 +108,7 @@ class Team:
         self.playing_style = {}
         self.position_needs = {}
         self.performance_requirements = {}
+        self.expected_index = None
 
     def set_requirements(self, requirements: Dict):
         """Set team requirements for player matching"""
@@ -241,19 +243,51 @@ class PlayerTeamMatcher:
             actions = (d.get("tackles_per_90") or 0) + (d.get("interceptions_per_90") or 0)
             scores.append(min(actions / reqs["min_defensive_actions"], 1.0))
 
-        return float(np.mean(scores)) if scores else 0.6
+        role_score = float(np.mean(scores)) if scores else 0.6
+        level_score = self._calculate_level_fit(player, team)
+        return role_score * 0.6 + level_score * 0.4
 
     def calculate_financial_fit(self, player: Player, team: Team) -> float:
-        """Calculate if player fits within team's budget"""
-        if player.market_value <= 0:
-            return 0.8  # Unknown value, assume reasonable
+        """Affordability, not cheapness.
 
-        if player.market_value > team.budget:
-            # Over budget, but calculate how much
-            return max(0.2, 1 - (player.market_value - team.budget) / team.budget)
-        else:
-            # Within budget
-            return min(1.0, 0.5 + (team.budget - player.market_value) / team.budget * 0.5)
+        The old formula rewarded low value: the cheaper a player was relative
+        to the budget, the closer to 1.0 the score — so a modest player scored
+        better financially at a rich club than a star did. Affordability is
+        really a gate: everything comfortably affordable scores the same, and
+        the score only drops as the fee starts to strain the budget.
+        """
+        if player.market_value <= 0 or team.budget <= 0:
+            return 0.7  # unknown value or budget: neutral, never a bonus
+
+        share = player.market_value / team.budget
+        if share <= 0.25:
+            return 1.0
+        if share <= 0.60:
+            return 1.0 - (share - 0.25) * (0.4 / 0.35)
+        if share <= 1.0:
+            return 0.6 - (share - 0.60) * (0.35 / 0.40)
+        return max(0.1, 0.25 - (share - 1.0) * 0.15)
+
+    def _calculate_level_fit(self, player: Player, team: Team) -> float:
+        """Is the player at the level this club operates at?
+
+        Without this the matcher had no notion of standing: every club was
+        judged against the same fixed reference values, so a modest player
+        scored much the same at an elite club as anywhere else.
+        """
+        expected = getattr(team, "expected_index", None)
+        index_data = getattr(player, "performance_index", None) or {}
+        index = index_data.get("value") if isinstance(index_data, dict) else None
+
+        if not expected or not isinstance(index, (int, float)) or index <= 0:
+            return 0.7
+
+        ratio = float(index) / float(expected)
+        if ratio < 1.0:
+            return max(0.0, 1.0 - (1.0 - ratio) * 4.0)
+        if ratio <= 1.25:
+            return 1.0
+        return max(0.5, 1.0 - (ratio - 1.25) * 0.8)
 
     def calculate_growth_potential(self, player: Player) -> float:
         """Calculate player's growth potential"""
@@ -324,6 +358,7 @@ class PlayerTeamMatcher:
             if isinstance(values, dict)
         }
         player.performance_history = db_player.performance_history or []
+        player.performance_index = db_player.performance_index or None
 
         team = Team(
             team_id=str(db_team.id),
@@ -336,6 +371,7 @@ class PlayerTeamMatcher:
         requirements = db_team.requirements or {}
         team.position_needs = requirements.get("positions", [])
         team.performance_requirements = requirements.get("performance", {})
+        team.expected_index = requirements.get("expected_index")
 
         return self.calculate_match_score(player, team)
 
