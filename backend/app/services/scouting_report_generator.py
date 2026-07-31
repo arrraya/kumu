@@ -502,16 +502,28 @@ class ScoutingReportGenerator:
     }
 
     def _score_role_from_definition(self, player_data: Dict, criteria: list) -> Dict:
-        """Score a role by checking real metrics against declared thresholds."""
+        """Score a role on a sliding scale rather than pass/fail.
+
+        All-or-nothing scoring made elite players hit 100 in several roles at
+        once, so the "best role" came down to dictionary order rather than the
+        data. Credit now scales with the distance from the threshold: half the
+        threshold earns nothing, meeting it earns half the points, and 1.5x
+        earns them all. Factors are only claimed when the player genuinely
+        clears the bar.
+        """
         metrics = player_data.get("metrics", {})
-        score = 0
+        score = 0.0
         factors = []
         for (category, key), threshold, points, label in criteria:
             value = metrics.get(category, {}).get(key)
-            if isinstance(value, (int, float)) and value > threshold:
-                score += points
+            if not isinstance(value, (int, float)) or threshold <= 0:
+                continue
+            ratio = float(value) / float(threshold)
+            credit = max(0.0, min((ratio - 0.5) / 1.0, 1.0))
+            score += points * credit
+            if ratio >= 1.0:
                 factors.append(label)
-        return {"score": score, "factors": factors}
+        return {"score": round(score), "factors": factors}
 
     def _assess_role_suitability(self, player_data: Dict, team_data: Dict) -> Dict:
         """Assess suitability for specific tactical roles"""
