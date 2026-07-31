@@ -55,20 +55,6 @@ class ScoutingReportGenerator:
         except Exception:
             return []
 
-    def _positional_peers(self, position: str, exclude_name: str, limit: int = 3) -> list:
-        """Real players in the same position, closest by performance index."""
-        return self._query_db(
-            """
-            SELECT name, current_team, market_value, performance_index
-            FROM players
-            WHERE position = :position AND name <> :name
-              AND performance_index IS NOT NULL
-            ORDER BY ABS(COALESCE((performance_index->>'value')::float, 0) - :idx) ASC
-            LIMIT :limit
-            """,
-            {"position": position, "name": exclude_name, "idx": 0.0, "limit": limit},
-        )
-
     def _load_benchmarks_from_db(self) -> Dict:
         """Fetch pipeline-produced benchmarks from the benchmarks table.
 

@@ -322,6 +322,7 @@ def _calculate_overall_prediction(predictions: Dict[str, Any]) -> Dict[str, Any]
 
     return {
         "score": overall_score,
-        "confidence": total_weight,  # Confidence based on available data
+        # Share of the prediction weights actually available, not a confidence level
+        "factor_coverage": total_weight,
         "factors_used": list(predictions.keys()),
     }

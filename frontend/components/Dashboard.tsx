@@ -11,6 +11,8 @@ interface DashboardProps {
 const Dashboard: React.FC<DashboardProps> = ({ setActiveView }) => {
   const [stats, setStats] = useState({
     totalPlayers: 0,
+    totalTeams: 0,
+    avgIndex: 0,
     totalMarketValue: 0,
     topPerformers: [] as any[],
     topValued: [] as any[],
@@ -35,9 +37,24 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveView }) => {
         .sort((a: any, b: any) => (b.marketValue || 0) - (a.marketValue || 0))
         .slice(0, 3)
       const totalMarketValue = players.reduce((s: number, p: any) => s + (p.marketValue || 0), 0)
+      const avgIndex = withIndex.length
+        ? withIndex.reduce((s: number, p: any) => s + p.performanceIndex.value, 0) / withIndex.length
+        : 0
+
+      // Teams are a separate call; failing here should not blank the dashboard.
+      let totalTeams = 0
+      try {
+        const teams = await api.teams.getAll()
+        totalTeams = (teams || []).length
+      } catch (e) {
+        console.error('Teams fetch failed:', e)
+      }
+
       setStats(prev => ({
         ...prev,
         totalPlayers: players.length,
+        totalTeams,
+        avgIndex,
         totalMarketValue,
         topPerformers,
         topValued,
@@ -64,14 +81,14 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveView }) => {
       color: 'blue'
     },
     {
-      title: 'Active Matches',
-      value: stats.activeMatches.toString(),
+      title: 'Listed Teams',
+      value: stats.totalTeams.toString(),
       icon: Target,
       color: 'green'
     },
     {
-      title: 'Avg Match Score',
-      value: `${stats.avgMatchScore}%`,
+      title: 'Avg Performance Index',
+      value: stats.avgIndex.toFixed(1),
       icon: Activity,
       color: 'purple'
     },

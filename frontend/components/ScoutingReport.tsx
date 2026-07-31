@@ -721,7 +721,7 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
              <h4 className="font-medium text-gray-700 mb-4">Financial Assessment</h4>
              <div className="space-y-3">
                <div className="flex justify-between items-center p-3 bg-gray-50 rounded">
-                 <span className="text-gray-600">vs Comparable Transfers</span>
+                 <span className="text-gray-600 mr-4">vs Comparable Transfers</span>
                  <span className="font-medium">{report.market_analysis.value_assessment.vs_comparables}</span>
                </div>
                <div className="flex justify-between items-center p-3 bg-gray-50 rounded">
