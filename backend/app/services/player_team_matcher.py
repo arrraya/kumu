@@ -121,10 +121,15 @@ class PlayerTeamMatcher:
     """Main matching engine"""
 
     def __init__(self):
+        # Financial fit is now an affordability gate: it reads 1.0 for most
+        # realistic moves, so it carries little information and gets less
+        # weight. Growth depends only on the player, so it never separates one
+        # club from another either. Tactical and performance are what actually
+        # discriminate between destinations, so they carry the score.
         self.weights = {
             "tactical_fit": 0.35,
-            "performance_match": 0.30,
-            "financial_fit": 0.20,
+            "performance_match": 0.40,
+            "financial_fit": 0.10,
             "potential_growth": 0.15,
         }
 
@@ -154,31 +159,46 @@ class PlayerTeamMatcher:
         style_score = self._calculate_style_score(player, team)
         return position_match * 0.6 + style_score * 0.4
 
+    # What "good" looks like per role, so style fit stops using one yardstick.
+    STYLE_REFERENCE = {
+        "attack":   {"completion": 0.80, "progressive": 4.0, "actions": 1.5},
+        "midfield": {"completion": 0.87, "progressive": 6.0, "actions": 4.0},
+        "defense":  {"completion": 0.90, "progressive": 5.0, "actions": 5.0},
+    }
+
     def _calculate_style_score(self, player: Player, team: Team) -> float:
-        """Match player output against the club's tactical identity."""
+        """Match player output against the club's tactical identity.
+
+        References are per position group: judging a striker's pressing by the
+        same tackle count as a midfielder repeated the defensive bias we had
+        already removed from performance fit.
+        """
         style = team.playing_style or {}
         metrics = player.metrics or {}
         if not style or not metrics:
-            return 0.6                      # neutral when the profile is unknown
+            return 0.6
+
+        group = self.POSITION_GROUP.get(player.position, "midfield")
+        ref = self.STYLE_REFERENCE[group]
 
         passing = metrics.get("passing", {})
         defensive = metrics.get("defensive", {})
         components = []
 
-        # Possession sides need secure, progressive passers
         possession = style.get("possession")
         if possession is not None:
             completion = passing.get("completion_rate") or 0
             progressive = passing.get("progressive_passes_per_90") or 0
-            passing_quality = min(completion / 0.85, 1.0) * 0.6 + min(progressive / 6.0, 1.0) * 0.4
-            # weight the requirement by how possession-dominant the club is
+            passing_quality = (
+                min(completion / ref["completion"], 1.0) * 0.6
+                + min(progressive / ref["progressive"], 1.0) * 0.4
+            )
             components.append(passing_quality * possession + (1 - possession) * 0.6)
 
-        # Pressing sides need players who win the ball back
         pressing = style.get("pressing_intensity")
         if pressing is not None:
             actions = (defensive.get("tackles_per_90") or 0) + (defensive.get("interceptions_per_90") or 0)
-            work_rate = min(actions / 4.0, 1.0)
+            work_rate = min(actions / ref["actions"], 1.0)
             components.append(work_rate * pressing + (1 - pressing) * 0.6)
 
         return float(np.mean(components)) if components else 0.6
