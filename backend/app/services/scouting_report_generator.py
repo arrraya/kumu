@@ -481,9 +481,31 @@ class ScoutingReportGenerator:
         return {"score": score, "factors": factors}
 
     def _score_wide_playmaker_attributes(self, player_data: Dict) -> Dict:
-        """Score wide playmaker attributes"""
-        # Similar implementation
-        return {"score": 70, "factors": ["Good dribbling", "Creates width"]}
+        """Score wide playmaker attributes.
+
+        Was a flat 70, which hijacked the best-role pick: when the other roles
+        scored low on sparse data, the constant always won.
+        """
+        metrics = player_data.get("metrics", {})
+        passing = metrics.get("passing", {})
+        shooting = metrics.get("shooting", {})
+        score = 0
+        factors = []
+
+        if (passing.get("key_passes_per_90") or 0) > 1.8:
+            score += 30
+            factors.append("Creates chances from wide areas")
+        if (passing.get("progressive_passes_per_90") or 0) > 4.0:
+            score += 25
+            factors.append("Carries play forward")
+        if (shooting.get("assists_per_90") or 0) > 0.2:
+            score += 25
+            factors.append("End product in the final third")
+        if (passing.get("completion_rate") or 0) > 0.78:
+            score += 20
+            factors.append("Reliable in tight areas")
+
+        return {"score": score, "factors": factors}
 
     def _score_ball_playing_defender(self, player_data: Dict) -> Dict:
         """Score ball playing defender attributes"""
@@ -532,9 +554,32 @@ class ScoutingReportGenerator:
         return {"score": score, "factors": factors}
 
     def _score_sweeper_attributes(self, player_data: Dict) -> Dict:
-        """Score sweeper attributes"""
-        # Similar implementation
-        return {"score": 75, "factors": ["Good positioning", "Reads game well"]}
+        """Score sweeper attributes.
+
+        Was a flat 75 — higher than the other centre-back roles could reach on
+        sparse data, so every defender came out recommended as a sweeper.
+        A sweeper reads danger and starts play rather than winning duels.
+        """
+        metrics = player_data.get("metrics", {})
+        passing = metrics.get("passing", {})
+        defensive = metrics.get("defensive", {})
+        score = 0
+        factors = []
+
+        if (defensive.get("interceptions_per_90") or 0) > 2.5:
+            score += 35
+            factors.append("Reads danger early")
+        if (passing.get("completion_rate") or 0) > 0.88:
+            score += 30
+            factors.append("Composed in possession")
+        if (passing.get("progressive_passes_per_90") or 0) > 4.0:
+            score += 20
+            factors.append("Starts attacks from the back")
+        if (defensive.get("tackles_per_90") or 0) < 2.0:
+            score += 15
+            factors.append("Anticipates rather than dives in")
+
+        return {"score": score, "factors": factors}
 
     def _assess_flexibility(self, player_data: Dict) -> Dict:
         """Assess player's tactical flexibility"""
@@ -552,8 +597,26 @@ class ScoutingReportGenerator:
 
         alternative_positions = versatility_map.get(position, [])
 
-        # Assess metrics for alternative positions
-        versatility_score = len(alternative_positions) * 20
+        # Versatility needs both the roles a position allows AND output that
+        # supports them. The previous version ignored metrics despite its
+        # docstring, so every player in a position scored identically.
+        metrics = player_data.get("metrics", {})
+        breadth_refs = [
+            (("passing", "completion_rate"), 0.85),
+            (("passing", "progressive_passes_per_90"), 5.0),
+            (("shooting", "goals_per_90"), 0.3),
+            (("shooting", "assists_per_90"), 0.2),
+            (("defensive", "tackles_per_90"), 2.0),
+            (("defensive", "interceptions_per_90"), 2.0),
+        ]
+        contributions = [
+            min(float(metrics.get(cat, {}).get(key)) / ref, 1.0)
+            for (cat, key), ref in breadth_refs
+            if isinstance(metrics.get(cat, {}).get(key), (int, float))
+        ]
+        breadth = float(np.mean(contributions)) if contributions else 0.5
+        position_range = min(len(alternative_positions) * 20, 100)
+        versatility_score = round(position_range * 0.6 + breadth * 100 * 0.4)
 
         return {
             "primary_position": position,
@@ -846,7 +909,13 @@ class ScoutingReportGenerator:
         """Estimate commercial value (merchandise, sponsorship, etc.)"""
         # Simplified calculation
         age_factor = 1.2 if player_data["age"] < 25 else 1.0 if player_data["age"] < 30 else 0.7
-        marketability = player_data.get("marketability_score", 50) / 100
+        # No marketability data source exists, so this derives from on-pitch
+        # performance instead of a field that was never populated (the old
+        # default left commercial value depending only on age).
+        index = (player_data.get("performance_index") or {}).get("value")
+        marketability = (
+            min(float(index), 100) / 100 if isinstance(index, (int, float)) else 0.5
+        )
 
         return 10000000 * marketability * age_factor
 
@@ -1223,7 +1292,23 @@ class ScoutingReportGenerator:
             factors.append("International transfer")
 
         # Playing style change
-        style_difference = 20  # Simplified - would calculate based on actual style metrics
+        # Adaptation cost from the real gap between the player's output and
+        # what the club's style demands, instead of a flat +20 for everyone.
+        style = team_data.get("playing_style") or {}
+        adapt_metrics = player_data.get("metrics", {})
+        gaps = []
+        possession = style.get("possession")
+        if possession is not None:
+            completion = adapt_metrics.get("passing", {}).get("completion_rate") or 0
+            gaps.append(max(0.0, possession - min(completion / 0.85, 1.0)))
+        pressing = style.get("pressing_intensity")
+        if pressing is not None:
+            defensive = adapt_metrics.get("defensive", {})
+            actions = (defensive.get("tackles_per_90") or 0) + (
+                defensive.get("interceptions_per_90") or 0
+            )
+            gaps.append(max(0.0, pressing - min(actions / 4.0, 1.0)))
+        style_difference = round(float(np.mean(gaps)) * 40) if gaps else 20
         risk_score += style_difference
 
         return {
