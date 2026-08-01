@@ -411,6 +411,9 @@ class ScoutingReportGenerator:
                 (("shooting", "goals_per_90"), 0.40, 40, "Consistent goal output"),
                 (("shooting", "conversion_rate"), 0.15, 35, "Clinical finishing"),
                 (("shooting", "xG_per_shot"), 0.15, 25, "Gets into high-value positions"),
+                # A poacher is defined as much by what they do NOT do: heavy
+                # creative involvement belongs to a different role.
+                (("passing", "key_passes_per_90"), 1.50, -25, "Creates too much for a pure poacher"),
             ],
             "Complete Forward": [
                 (("shooting", "goals_per_90"), 0.30, 30, "Scores regularly"),
@@ -439,6 +442,7 @@ class ScoutingReportGenerator:
                 (("defensive", "tackles_per_90"), 1.20, 35, "Tracks back"),
                 (("passing", "completion_rate"), 0.80, 35, "Keeps possession"),
                 (("passing", "progressive_passes_per_90"), 3.50, 30, "Links the line"),
+                (("shooting", "shots_per_90"), 2.00, -15, "Shoots more than a wide midfielder would"),
             ],
         },
         "CM": {
@@ -474,6 +478,7 @@ class ScoutingReportGenerator:
                 (("defensive", "interceptions_per_90"), 2.20, 40, "Screens the defence"),
                 (("passing", "completion_rate"), 0.85, 35, "Safe in possession"),
                 (("defensive", "tackles_per_90"), 1.80, 25, "Solid in the duel"),
+                (("shooting", "goals_per_90"), 0.15, -15, "Ventures forward beyond the anchor role"),
             ],
         },
         "FULLBACK": {
@@ -486,6 +491,7 @@ class ScoutingReportGenerator:
                 (("defensive", "tackles_per_90"), 2.00, 40, "Strong one-on-one"),
                 (("defensive", "interceptions_per_90"), 1.80, 35, "Reads wide threats"),
                 (("passing", "completion_rate"), 0.82, 25, "Keeps it simple"),
+                (("shooting", "assists_per_90"), 0.15, -20, "Attacks more than the role asks"),
             ],
             "Wing-Back": [
                 (("passing", "progressive_passes_per_90"), 4.00, 30, "Covers the whole flank"),
@@ -496,7 +502,52 @@ class ScoutingReportGenerator:
         },
     }
 
+    ROLE_DEFINITIONS["CAM"] = {
+        "Playmaker": [
+            (("passing", "key_passes_per_90"), 2.00, 35, "Excellent chance creation"),
+            (("passing", "completion_rate"), 0.85, 25, "High passing accuracy"),
+            (("passing", "progressive_passes_per_90"), 5.00, 25, "Strong progressive passing"),
+            (("passing", "pass_difficulty_score"), 0.18, 15, "Attempts demanding passes"),
+        ],
+        "Shadow Striker": [
+            (("shooting", "shots_per_90"), 2.50, 35, "High goal threat"),
+            (("shooting", "goals_per_90"), 0.30, 35, "Arrives in the box"),
+            (("shooting", "conversion_rate"), 0.15, 30, "Clinical finishing"),
+            (("passing", "progressive_passes_per_90"), 5.00, -20, "Operates deeper than the role"),
+        ],
+        "Wide Playmaker": [
+            (("passing", "key_passes_per_90"), 1.80, 30, "Creates from wide areas"),
+            (("passing", "progressive_passes_per_90"), 4.00, 25, "Carries play forward"),
+            (("shooting", "assists_per_90"), 0.20, 25, "End product in the final third"),
+            (("passing", "completion_rate"), 0.78, 20, "Reliable in tight areas"),
+        ],
+    }
+
+    # Stopper previously scored on aerial duels and blocks, neither of which
+    # this data source provides, so every defender scored 0 for it.
+    ROLE_DEFINITIONS["CB"] = {
+        "Ball Playing Defender": [
+            (("passing", "completion_rate"), 0.88, 35, "Excellent distribution"),
+            (("passing", "progressive_passes_per_90"), 3.00, 30, "Breaks lines with passing"),
+            (("defensive", "tackles_per_90"), 2.00, 20, "Solid defensive base"),
+            (("passing", "pass_difficulty_score"), 0.15, 15, "Comfortable with demanding passes"),
+        ],
+        "Stopper": [
+            (("defensive", "tackles_per_90"), 2.50, 40, "High tackle volume"),
+            (("defensive", "interceptions_per_90"), 2.00, 30, "Steps in to break play up"),
+            (("passing", "completion_rate"), 0.80, 30, "Keeps it simple and secure"),
+            (("passing", "progressive_passes_per_90"), 4.00, -20, "More builder than destroyer"),
+        ],
+        "Sweeper": [
+            (("defensive", "interceptions_per_90"), 2.50, 35, "Reads danger early"),
+            (("passing", "completion_rate"), 0.88, 30, "Composed in possession"),
+            (("passing", "progressive_passes_per_90"), 4.00, 20, "Starts attacks from the back"),
+            (("defensive", "tackles_per_90"), 2.50, -15, "Dives in more than a sweeper should"),
+        ],
+    }
+
     ROLE_POSITION_MAP = {
+        "CAM": "CAM", "CB": "CB",
         "ST": "ST", "LW": "WINGER", "RW": "WINGER", "RM": "WINGER", "LM": "WINGER",
         "CM": "CM", "CDM": "CDM", "RB": "FULLBACK", "LB": "FULLBACK",
     }
@@ -521,9 +572,11 @@ class ScoutingReportGenerator:
             ratio = float(value) / float(threshold)
             credit = max(0.0, min((ratio - 0.5) / 1.0, 1.0))
             score += points * credit
-            if ratio >= 1.0:
+            # Negative criteria describe traits that work against the role, so
+            # they never count as a strength in the report.
+            if points > 0 and ratio >= 1.0:
                 factors.append(label)
-        return {"score": round(score), "factors": factors}
+        return {"score": max(0, round(score)), "factors": factors}
 
     def _assess_role_suitability(self, player_data: Dict, team_data: Dict) -> Dict:
         """Assess suitability for specific tactical roles"""
@@ -531,20 +584,9 @@ class ScoutingReportGenerator:
 
         role_scores = {}
 
-        if position == "CAM":
-            # Assess different CAM roles
-            role_scores["Playmaker"] = self._score_playmaker_attributes(player_data)
-            role_scores["Shadow Striker"] = self._score_shadow_striker_attributes(player_data)
-            role_scores["Wide Playmaker"] = self._score_wide_playmaker_attributes(player_data)
-        elif position == "CB":
-            # Assess different CB roles
-            role_scores["Ball Playing Defender"] = self._score_ball_playing_defender(player_data)
-            role_scores["Stopper"] = self._score_stopper_attributes(player_data)
-            role_scores["Sweeper"] = self._score_sweeper_attributes(player_data)
-        else:
-            group = self.ROLE_POSITION_MAP.get(position)
-            for role_name, criteria in self.ROLE_DEFINITIONS.get(group, {}).items():
-                role_scores[role_name] = self._score_role_from_definition(player_data, criteria)
+        group = self.ROLE_POSITION_MAP.get(position)
+        for role_name, criteria in self.ROLE_DEFINITIONS.get(group, {}).items():
+            role_scores[role_name] = self._score_role_from_definition(player_data, criteria)
 
         best_role = (
             max(role_scores.items(), key=lambda x: x[1]["score"])
@@ -557,156 +599,6 @@ class ScoutingReportGenerator:
             "role_scores": role_scores,
             "recommendation": f"Best suited as {best_role[0]} with {best_role[1]['score']}% compatibility",
         }
-
-    def _score_playmaker_attributes(self, player_data: Dict) -> Dict:
-        """Score playmaker attributes"""
-        metrics = player_data["metrics"]
-        score = 0
-        factors = []
-
-        # Key passes
-        if metrics["passing"]["key_passes_per_90"] > 2.5:
-            score += 30
-            factors.append("Excellent chance creation")
-        elif metrics["passing"]["key_passes_per_90"] > 1.8:
-            score += 20
-            factors.append("Good chance creation")
-
-        # Pass completion
-        if metrics["passing"]["completion_rate"] > 0.85:
-            score += 25
-            factors.append("High passing accuracy")
-
-        # Progressive passes
-        if metrics["passing"]["progressive_passes_per_90"] > 5:
-            score += 25
-            factors.append("Strong progressive passing")
-
-        return {"score": score, "factors": factors}
-
-    def _score_shadow_striker_attributes(self, player_data: Dict) -> Dict:
-        """Score shadow striker attributes"""
-        metrics = player_data["metrics"]
-        score = 0
-        factors = []
-
-        # Goal threat
-        if metrics["shooting"]["shots_per_90"] > 2.5:
-            score += 35
-            factors.append("High goal threat")
-
-        # Movement
-        if metrics["movement"]["high_intensity_runs"] > 25:
-            score += 30
-            factors.append("Excellent attacking runs")
-
-        # Conversion
-        if metrics["shooting"]["conversion_rate"] > 0.15:
-            score += 35
-            factors.append("Clinical finishing")
-
-        return {"score": score, "factors": factors}
-
-    def _score_wide_playmaker_attributes(self, player_data: Dict) -> Dict:
-        """Score wide playmaker attributes.
-
-        Was a flat 70, which hijacked the best-role pick: when the other roles
-        scored low on sparse data, the constant always won.
-        """
-        metrics = player_data.get("metrics", {})
-        passing = metrics.get("passing", {})
-        shooting = metrics.get("shooting", {})
-        score = 0
-        factors = []
-
-        if (passing.get("key_passes_per_90") or 0) > 1.8:
-            score += 30
-            factors.append("Creates chances from wide areas")
-        if (passing.get("progressive_passes_per_90") or 0) > 4.0:
-            score += 25
-            factors.append("Carries play forward")
-        if (shooting.get("assists_per_90") or 0) > 0.2:
-            score += 25
-            factors.append("End product in the final third")
-        if (passing.get("completion_rate") or 0) > 0.78:
-            score += 20
-            factors.append("Reliable in tight areas")
-
-        return {"score": score, "factors": factors}
-
-    def _score_ball_playing_defender(self, player_data: Dict) -> Dict:
-        """Score ball playing defender attributes"""
-        metrics = player_data["metrics"]
-        score = 0
-        factors = []
-
-        # Passing ability
-        if metrics["passing"]["completion_rate"] > 0.88:
-            score += 40
-            factors.append("Excellent distribution")
-
-        # Progressive passes
-        if metrics["passing"]["progressive_passes_per_90"] > 3:
-            score += 30
-            factors.append("Breaks lines with passing")
-
-        # Defensive solidity
-        if metrics["defensive"]["tackles_per_90"] > 2.5:
-            score += 30
-            factors.append("Solid defensive base")
-
-        return {"score": score, "factors": factors}
-
-    def _score_stopper_attributes(self, player_data: Dict) -> Dict:
-        """Score stopper attributes"""
-        metrics = player_data["metrics"]
-        score = 0
-        factors = []
-
-        # Aerial dominance
-        if metrics["defensive"]["aerial_duels_won"] > 0.7:
-            score += 35
-            factors.append("Dominant in the air")
-
-        # Defensive actions
-        if metrics["defensive"]["tackles_per_90"] > 3:
-            score += 35
-            factors.append("High tackle volume")
-
-        # Blocks
-        if metrics["defensive"].get("blocks_per_90", 0) > 1:
-            score += 30
-            factors.append("Excellent shot blocking")
-
-        return {"score": score, "factors": factors}
-
-    def _score_sweeper_attributes(self, player_data: Dict) -> Dict:
-        """Score sweeper attributes.
-
-        Was a flat 75 — higher than the other centre-back roles could reach on
-        sparse data, so every defender came out recommended as a sweeper.
-        A sweeper reads danger and starts play rather than winning duels.
-        """
-        metrics = player_data.get("metrics", {})
-        passing = metrics.get("passing", {})
-        defensive = metrics.get("defensive", {})
-        score = 0
-        factors = []
-
-        if (defensive.get("interceptions_per_90") or 0) > 2.5:
-            score += 35
-            factors.append("Reads danger early")
-        if (passing.get("completion_rate") or 0) > 0.88:
-            score += 30
-            factors.append("Composed in possession")
-        if (passing.get("progressive_passes_per_90") or 0) > 4.0:
-            score += 20
-            factors.append("Starts attacks from the back")
-        if (defensive.get("tackles_per_90") or 0) < 2.0:
-            score += 15
-            factors.append("Anticipates rather than dives in")
-
-        return {"score": score, "factors": factors}
 
     def _assess_flexibility(self, player_data: Dict) -> Dict:
         """Assess player's tactical flexibility"""
