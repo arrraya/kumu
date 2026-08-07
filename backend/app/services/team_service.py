@@ -5,6 +5,7 @@ This module provides functions for team CRUD operations, team requirements manag
 and integration with player matching and analytics services.
 """
 
+import logging
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
 from datetime import datetime
@@ -12,6 +13,8 @@ from datetime import datetime
 from app.db import models
 from app.schemas import team as team_schemas
 from app.services.player_team_matcher import PlayerTeamMatcher
+
+logger = logging.getLogger(__name__)
 
 # Moved import inside function to avoid circular import
 
@@ -246,13 +249,18 @@ def find_matching_players(
         query = query.filter(models.Player.position == position_filter)
     elif db_team.requirements:
         # Filter by required positions if available
-        positions_needed = db_team.requirements.get("positions_needed", [])
+        # Requirements store this as "positions" (that is what seed_teams writes
+        # and what the matcher reads); "positions_needed" never existed, so this
+        # filter silently did nothing.
+        positions_needed = db_team.requirements.get("positions", [])
         if positions_needed:
             query = query.filter(models.Player.position.in_(positions_needed))
 
-    # Apply budget constraints
+    # Affordability is already scored as a graded gate in the matcher, so this
+    # only rules out clearly unreachable signings instead of pre-cutting at half
+    # the budget, which hid realistic but expensive targets.
     if db_team.budget:
-        query = query.filter(models.Player.market_value <= db_team.budget * 0.5)
+        query = query.filter(models.Player.market_value <= db_team.budget * 1.2)
 
     players = query.all()
 
@@ -278,7 +286,9 @@ def find_matching_players(
                     }
                 )
         except Exception as e:
-            # Skip players that cause errors in matching
+            # Log instead of swallowing: this except hid the fact that
+            # calculate_fit_score did not exist at all for a long time.
+            logger.warning("Match scoring failed for player %s: %s", player.id, e)
             continue
 
     # Sort by match score and limit results
