@@ -335,11 +335,20 @@ def get_team_analytics(
     player_ids = [player.id for player in squad_players]
 
     # Run analysis on the squad
+    # Honour the requested analysis_type instead of always forcing one, and
+    # ask for metric names that match the data contract the pipeline writes.
     analytics = run_analysis(
         db,
-        analysis_type="statistical_summary",
+        analysis_type=analysis_type,
         player_ids=player_ids,
-        parameters={"metrics": ["goals", "assists", "minutes_played", "pass_completion"]},
+        parameters={
+            "metrics": [
+                "goals_per_90",
+                "assists_per_90",
+                "completion_rate",
+                "key_passes_per_90",
+            ]
+        },
     )
 
     # Add team-specific context
@@ -541,8 +550,14 @@ def get_team_statistics(db: Session, team_id: int) -> Dict[str, Any]:
         "team_id": team_id,
         "team_name": db_team.name,
         "squad_size": len(squad),
-        "total_market_value": sum(p.market_value for p in squad) if squad else 0,
-        "average_age": sum(p.age for p in squad) / len(squad) if squad else 0,
+        # Guard against nulls: the pipeline deliberately leaves fields empty
+        # when it cannot compute them, and sum() raises on None.
+        "total_market_value": sum(p.market_value or 0 for p in squad),
+        "average_age": (
+            round(sum(p.age for p in squad if p.age) / len([p for p in squad if p.age]), 1)
+            if any(p.age for p in squad)
+            else None
+        ),
         "budget_remaining": db_team.budget,
         "formation": db_team.formation,
         "league": db_team.league,
@@ -552,15 +567,16 @@ def get_team_statistics(db: Session, team_id: int) -> Dict[str, Any]:
     # Position distribution
     position_count = {}
     for player in squad:
-        position_count[player.position] = position_count.get(player.position, 0) + 1
+        if player.position:
+            position_count[player.position] = position_count.get(player.position, 0) + 1
     stats["position_distribution"] = position_count
 
     # Age distribution
     age_groups = {
-        "under_23": len([p for p in squad if p.age < 23]),
-        "23_to_27": len([p for p in squad if 23 <= p.age <= 27]),
-        "28_to_32": len([p for p in squad if 28 <= p.age <= 32]),
-        "over_32": len([p for p in squad if p.age > 32]),
+        "under_23": len([p for p in squad if p.age and p.age < 23]),
+        "23_to_27": len([p for p in squad if p.age and 23 <= p.age <= 27]),
+        "28_to_32": len([p for p in squad if p.age and 28 <= p.age <= 32]),
+        "over_32": len([p for p in squad if p.age and p.age > 32]),
     }
     stats["age_distribution"] = age_groups
 
