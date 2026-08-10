@@ -185,18 +185,8 @@ def _scouting_analysis(db: Session, players: List[Any], parameters: Dict[str, An
 
     reports = []
     for player in players:
-        player_data = {
-            "id": player.id,
-            "name": player.name,
-            "age": player.age or 26,
-            "position": player.position,
-            "nationality": player.nationality,
-            "current_team": player.current_team,
-            "market_value": float(player.market_value or 0),
-            "performance_index": player.performance_index or {},
-            "metrics": player.metrics or {},
-            "performance_history": player.performance_history or [],
-        }
+        player_data = generator.build_player_data(player)
+
         reports.append(
             {
                 "player_id": player.id,

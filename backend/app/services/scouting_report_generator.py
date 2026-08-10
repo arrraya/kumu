@@ -1653,6 +1653,66 @@ class ScoutingReportGenerator:
             },
         ]
 
+    # Neutral stand-ins for metric categories a data source may not provide.
+    # StatsBomb open data has no tracking, so "movement" is always absent and
+    # generate_physical_profile indexes it directly.
+    NEUTRAL_METRICS = {
+        "passing": {
+            "completion_rate": 0.75, "progressive_passes_per_90": 3.0,
+            "key_passes_per_90": 1.5, "pass_difficulty_score": 0.6,
+        },
+        "shooting": {
+            "shots_per_90": 1.5, "xG_per_shot": 0.12, "conversion_rate": 0.12,
+            "goals_per_90": 0.2, "assists_per_90": 0.2,
+        },
+        "movement": {
+            "distance_covered_per_90": 10.0, "high_intensity_runs": 20, "average_speed": 7.0,
+        },
+        "defensive": {
+            "tackles_per_90": 1.5, "interceptions_per_90": 1.5, "aerial_duels_won": 0.5,
+        },
+    }
+
+    @classmethod
+    def merge_metrics(cls, real_metrics) -> Dict:
+        """Per-category merge: keep real categories, fill missing ones with
+        neutral defaults so the generator always gets a full structure. Also
+        replaces None values inside real categories, since the maths downstream
+        cannot handle them. Coverage reporting is what keeps this honest.
+        """
+        if not real_metrics or not isinstance(real_metrics, dict):
+            return {k: dict(v) for k, v in cls.NEUTRAL_METRICS.items()}
+        merged = {}
+        for category, defaults in cls.NEUTRAL_METRICS.items():
+            real_cat = real_metrics.get(category)
+            if not isinstance(real_cat, dict):
+                merged[category] = dict(defaults)
+                continue
+            merged_cat = dict(defaults)
+            for key, value in real_cat.items():
+                if value is not None:
+                    merged_cat[key] = value
+            merged[category] = merged_cat
+        return merged
+
+    @classmethod
+    def build_player_data(cls, player) -> Dict:
+        """Adapt a DB player row into the dict shape this generator expects."""
+        return {
+            "id": player.id,
+            "name": player.name,
+            "age": player.age or 26,
+            "position": player.position,
+            "nationality": player.nationality,
+            "current_team": getattr(player, "current_team", None),
+            "market_value": float(getattr(player, "market_value", 0) or 0),
+            "performance_index": getattr(player, "performance_index", None)
+            or {"value": 70.0, "trend": 0.0, "volatility": 0.2, "confidence": 0.5},
+            "metrics": cls.merge_metrics(getattr(player, "metrics", None)),
+            "performance_history": getattr(player, "performance_history", None)
+            or [{"rating": 7.0, "goals": 0, "assists": 0}] * 5,
+        }
+
     def generate_full_report(self, player_data: Dict, team_data: Dict) -> Dict:
         """Generate complete scouting report"""
 
