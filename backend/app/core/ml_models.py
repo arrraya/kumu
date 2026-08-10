@@ -1,44 +1,59 @@
+"""Per-player performance summaries over a chosen window.
+
+This used to instantiate an untrained XGBClassifier and GaussianMixture at
+import time and never use them, which pulled sklearn and xgboost into the API
+process for nothing. The real modelling lives in `pipeline/`, which trains a
+pass-difficulty model on actual event data; this module only summarises the
+match history the pipeline produces.
+"""
+from typing import Any, Dict, List
+
 import numpy as np
-from sklearn.mixture import GaussianMixture
-import xgboost as xgb
-from typing import Dict, List
 
 
 class PlayerAnalyzer:
-    def __init__(self):
-        self.pass_difficulty_model = self._load_pass_difficulty_model()
-        self.style_clustering_model = self._load_style_clustering_model()
+    """Summarise a player's recent form from their match history."""
 
-    def _load_pass_difficulty_model(self):
-        # In production, load from saved model
-        # For now, create a simple model
-        return xgb.XGBClassifier(random_state=0)
+    WINDOWS = {"last_5": 5, "last_10": 10}
 
-    def _load_style_clustering_model(self):
-        # In production, load from saved model
-        return GaussianMixture(n_components=40)
+    def analyze_player(self, player: Any, period: str) -> Dict[str, Any]:
+        history = getattr(player, "performance_history", None) or []
+        window = self.WINDOWS.get(period)
+        if window:
+            history = history[-window:]
 
-    def analyze_player(self, player, period: str) -> Dict:
-        # Analyze player performance
-        performance_data = player.performance_history
+        ratings = [
+            float(entry["rating"])
+            for entry in history
+            if isinstance(entry, dict) and isinstance(entry.get("rating"), (int, float))
+        ]
 
-        if period == "last_5":
-            performance_data = performance_data[-5:]
-        elif period == "last_10":
-            performance_data = performance_data[-10:]
+        if not ratings:
+            return {
+                "matches_analysed": 0,
+                "average_rating": None,
+                "trend": None,
+                "consistency": None,
+                "peak_performance": None,
+                "note": "no match ratings available for this period",
+            }
 
-        # Calculate statistics
-        ratings = [p.get("rating", 0) for p in performance_data]
+        mean = float(np.mean(ratings))
+        # Report consistency the way it reads: higher means steadier. Raw
+        # standard deviation was labelled "consistency" but means the opposite.
+        variation = float(np.std(ratings)) / mean if mean else 0.0
 
         return {
-            "average_rating": np.mean(ratings),
-            "trend": self._calculate_trend(ratings),
-            "consistency": np.std(ratings),
-            "peak_performance": max(ratings) if ratings else 0,
+            "matches_analysed": len(ratings),
+            "average_rating": round(mean, 2),
+            "trend": round(self._calculate_trend(ratings), 3),
+            "consistency": round(max(0.0, min(1.0, 1 - variation)) * 100, 1),
+            "rating_std": round(float(np.std(ratings)), 3),
+            "peak_performance": round(max(ratings), 2),
         }
 
     def _calculate_trend(self, ratings: List[float]) -> float:
+        """Slope of a linear fit across the window."""
         if len(ratings) < 2:
-            return 0
-        x = np.arange(len(ratings))
-        return np.polyfit(x, ratings, 1)[0]
+            return 0.0
+        return float(np.polyfit(np.arange(len(ratings)), ratings, 1)[0])
