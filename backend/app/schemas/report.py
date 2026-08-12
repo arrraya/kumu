@@ -20,6 +20,9 @@ class ExecutiveSummary(BaseModel):
     overall_percentile: int
     key_findings: List[str]
     executive_statement: str
+    # Reported alongside the ranked percentile so the two are not confused
+    metric_percentile_average: Optional[int] = None
+    percentile_basis: Optional[str] = None
 
 
 class StatisticalOverview(BaseModel):
@@ -41,6 +44,7 @@ class PhysicalProfile(BaseModel):
     athletic_scores: Dict[str, Dict[str, Any]]
     physical_age_analysis: Dict[str, Any]
     injury_risk_factors: Dict[str, Any]
+    physical_comparison: Optional[str] = None
 
 
 class MarketAnalysis(BaseModel):
