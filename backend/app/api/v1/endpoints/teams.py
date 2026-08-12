@@ -246,17 +246,23 @@ def get_all_teams_summary(
     if not teams:
         return {"message": "No teams found", "summary": {}}
 
-    total_budget = sum(team.budget for team in teams)
+    # Guard against nulls: budget/league/country/formation are all optional on
+    # the model, and sum() raises on None while dict keys would show "None".
+    total_budget = sum(team.budget or 0 for team in teams)
     avg_budget = total_budget / len(teams) if teams else 0
 
-    leagues = {}
-    countries = {}
-    formations = {}
+    leagues: dict = {}
+    countries: dict = {}
+    formations: dict = {}
 
     for team in teams:
-        leagues[team.league] = leagues.get(team.league, 0) + 1
-        countries[team.country] = countries.get(team.country, 0) + 1
-        formations[team.formation] = formations.get(team.formation, 0) + 1
+        for bucket, value in (
+            (leagues, team.league),
+            (countries, team.country),
+            (formations, team.formation),
+        ):
+            if value:
+                bucket[value] = bucket.get(value, 0) + 1
 
     return {
         "total_teams": len(teams),

@@ -23,29 +23,6 @@ def _numpy_to_native(obj):
     return obj
 
 
-def _merge_metrics_defaults(real_metrics, defaults: dict) -> dict:
-    """Per-category merge: keep real metric categories, fill missing ones with
-    neutral defaults so the report generator always receives a full structure.
-    Coverage tracking (computed from the raw player before this merge) is what
-    keeps this honest.
-    Also fills None values inside real categories with the category default,
-    since downstream code does arithmetic on these values."""
-    if not real_metrics or not isinstance(real_metrics, dict):
-        return defaults
-    merged = {}
-    for category, default_values in defaults.items():
-        real_cat = real_metrics.get(category)
-        if not isinstance(real_cat, dict):
-            merged[category] = default_values
-            continue
-        merged_cat = dict(default_values)
-        for key, value in real_cat.items():
-            if value is not None:
-                merged_cat[key] = value
-        merged[category] = merged_cat
-    return merged
-
-
 def _compute_data_coverage(player) -> dict:
     """Inspect which key fields are genuinely populated on the player (before
     any defaults are applied) so the frontend can show a data-coverage badge.
@@ -99,44 +76,10 @@ async def generate_report(
         raise HTTPException(status_code=404, detail="Team not found")
 
     # Convert ORM models to dicts expected by the report generator
-    player_data = {
-        "id": player.id,
-        "name": player.name,
-        "age": player.age,
-        "position": player.position,
-        "nationality": player.nationality,
-        "current_team": getattr(player, "current_team", None),
-        "market_value": getattr(player, "market_value", 0) or 0,
-        "performance_index": getattr(player, "performance_index", None)
-        or {"value": 70.0, "trend": 0.0, "volatility": 0.2, "confidence": 0.5},
-        "metrics": _merge_metrics_defaults(getattr(player, "metrics", None), {
-            "passing": {
-                "completion_rate": 0.75,
-                "progressive_passes_per_90": 3.0,
-                "key_passes_per_90": 1.5,
-                "pass_difficulty_score": 0.6,
-            },
-            "shooting": {
-                "shots_per_90": 1.5,
-                "xG_per_shot": 0.12,
-                "conversion_rate": 0.12,
-                "goals_per_90": 0.2,
-                "assists_per_90": 0.2,
-            },
-            "movement": {
-                "distance_covered_per_90": 10.0,
-                "high_intensity_runs": 20,
-                "average_speed": 7.0,
-            },
-            "defensive": {
-                "tackles_per_90": 1.5,
-                "interceptions_per_90": 1.5,
-                "aerial_duels_won": 0.5,
-            },
-        }),
-        "performance_history": getattr(player, "performance_history", None)
-        or [{"rating": 7.0, "goals": 0, "assists": 0}] * 5,
-    }
+    # Same adapter the generator exposes, so the metric defaults live in
+    # one place instead of being duplicated here.
+    player_data = report_generator.build_player_data(player)
+
     team_data = {
         "id": team.id,
         "name": team.name,
