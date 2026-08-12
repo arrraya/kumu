@@ -251,20 +251,62 @@ class PDFReportGenerator:
         return elements
 
     def _generate_tactical_analysis(self, data: Dict[str, Any]) -> list:
-        """Generate tactical analysis section."""
-        elements = []
+        """Generate tactical analysis section.
 
-        elements.append(Paragraph("Tactical Analysis", self.styles["SectionHeader"]))
+        Previously read formation keys the generator never produced
+        ("best_fit"/"compatibility_score" instead of "fit"/"score"), and left
+        out style fit, role suitability and flexibility entirely, so this
+        section printed little more than its heading.
+        """
+        elements = [Paragraph("Tactical Analysis", self.styles["SectionHeader"])]
 
-        # Formation compatibility
         formation = data.get("formation_compatibility", {})
         if formation:
             elements.append(Paragraph("<b>Formation Compatibility:</b>", self.styles["SubSection"]))
-            best_fit = formation.get("best_fit", "N/A")
-            score = formation.get("compatibility_score", 0)
             elements.append(
                 Paragraph(
-                    f"Best Formation: {best_fit} (Score: {score:.1f}%)",
+                    f"{formation.get('fit', 'Unknown')} — score {formation.get('score', 0)}%"
+                    f" ({formation.get('note', '')})",
+                    self.styles["BodyText"],
+                )
+            )
+            elements.append(Spacer(1, 0.15 * inch))
+
+        style = data.get("style_compatibility", {})
+        if style:
+            elements.append(Paragraph("<b>Style Compatibility:</b>", self.styles["SubSection"]))
+            elements.append(
+                Paragraph(
+                    f"Player style: {style.get('player_style', 'Unknown')} — "
+                    f"compatibility {style.get('compatibility_score', 0)}%",
+                    self.styles["BodyText"],
+                )
+            )
+            for note in style.get("notes", [])[:4]:
+                elements.append(Paragraph(f"• {note}", self.styles["BodyText"]))
+            elements.append(Spacer(1, 0.15 * inch))
+
+        roles = data.get("role_suitability", {})
+        role_scores = roles.get("role_scores", {})
+        if role_scores:
+            elements.append(Paragraph("<b>Role Suitability:</b>", self.styles["SubSection"]))
+            elements.append(
+                Paragraph(f"Best role: {roles.get('best_role', 'Unknown')}", self.styles["BodyText"])
+            )
+            for role, detail in role_scores.items():
+                if isinstance(detail, dict):
+                    elements.append(
+                        Paragraph(f"• {role}: {detail.get('score', 0)}%", self.styles["BodyText"])
+                    )
+            elements.append(Spacer(1, 0.15 * inch))
+
+        flexibility = data.get("tactical_flexibility", {})
+        if flexibility:
+            alternatives = ", ".join(flexibility.get("alternative_positions", [])) or "none listed"
+            elements.append(
+                Paragraph(
+                    f"<b>Versatility:</b> {flexibility.get('tactical_flexibility', 'Unknown')}"
+                    f" ({flexibility.get('versatility_score', 0)}%) — also covers: {alternatives}",
                     self.styles["BodyText"],
                 )
             )
@@ -273,25 +315,48 @@ class PDFReportGenerator:
         return elements
 
     def _generate_physical_profile(self, data: Dict[str, Any]) -> list:
-        """Generate physical profile section."""
-        elements = []
+        """Generate physical profile section.
 
-        elements.append(Paragraph("Physical Profile", self.styles["SectionHeader"]))
+        Asked for a "percentile" the generator never emits; it provides
+        "score" and "rating", so every attribute printed 0th percentile.
+        """
+        elements = [Paragraph("Physical Profile", self.styles["SectionHeader"])]
 
-        # Athletic scores
         athletic_scores = data.get("athletic_scores", {})
         if athletic_scores:
             elements.append(Paragraph("<b>Athletic Attributes:</b>", self.styles["SubSection"]))
             for attr, value in athletic_scores.items():
                 if isinstance(value, dict):
-                    score = value.get("score", 0)
-                    percentile = value.get("percentile", 0)
+                    score = value.get("score")
+                    rating = value.get("rating", "")
+                    score_text = f"{score:.1f}" if isinstance(score, (int, float)) else "n/a"
                     elements.append(
                         Paragraph(
-                            f"• {attr.replace('_', ' ').title()}: {score:.1f} ({percentile}th percentile)",
+                            f"• {attr.replace('_', ' ').title()}: {score_text} ({rating})",
                             self.styles["BodyText"],
                         )
                     )
+            elements.append(Spacer(1, 0.15 * inch))
+
+        age_analysis = data.get("physical_age_analysis", {})
+        if age_analysis:
+            elements.append(
+                Paragraph(
+                    f"<b>Development stage:</b> {age_analysis.get('development_stage', 'Unknown')}"
+                    f" — {age_analysis.get('peak_years_remaining', 0)} peak years remaining",
+                    self.styles["BodyText"],
+                )
+            )
+
+        injury = data.get("injury_risk_factors", {})
+        if injury:
+            elements.append(
+                Paragraph(
+                    f"<b>Injury risk:</b> {injury.get('risk_level', 'Unknown')}"
+                    f" (score {injury.get('risk_score', 0)})",
+                    self.styles["BodyText"],
+                )
+            )
             elements.append(Spacer(1, 0.2 * inch))
 
         return elements
@@ -324,15 +389,52 @@ class PDFReportGenerator:
         return elements
 
     def _generate_comparison_analysis(self, data: Dict[str, Any]) -> list:
-        """Generate comparison analysis section."""
-        elements = []
+        """Generate comparison analysis section.
 
-        elements.append(Paragraph("Comparison Analysis", self.styles["SectionHeader"]))
+        Only printed the upgrade verdict, discarding the real positional peers
+        and league percentile the generator now computes from the database.
+        """
+        elements = [Paragraph("Comparison Analysis", self.styles["SectionHeader"])]
 
-        # Upgrade assessment
+        squad = data.get("squad_comparison", {})
+        if squad:
+            elements.append(
+                Paragraph(
+                    f"<b>Versus peers:</b> {squad.get('performance_improvement', 'n/a')}"
+                    f" — {squad.get('immediate_impact', '')}",
+                    self.styles["BodyText"],
+                )
+            )
+            basis = squad.get("basis")
+            if basis:
+                elements.append(Paragraph(f"<i>{basis}</i>", self.styles["BodyText"]))
+            for peer in squad.get("current_options", [])[:5]:
+                if isinstance(peer, dict):
+                    elements.append(
+                        Paragraph(
+                            f"• {peer.get('name', 'Unknown')} ({peer.get('team', '')}):"
+                            f" index {peer.get('performance_index', 'n/a')}",
+                            self.styles["BodyText"],
+                        )
+                    )
+            elements.append(Spacer(1, 0.15 * inch))
+
+        league = data.get("league_comparison", {})
+        if league:
+            percentile = league.get("league_percentile")
+            percentile_text = f"{percentile}th percentile" if percentile is not None else "n/a"
+            elements.append(
+                Paragraph(
+                    f"<b>League standing:</b> {percentile_text} — "
+                    f"{league.get('vs_top_performers', '')}. {league.get('statistical_rank', '')}",
+                    self.styles["BodyText"],
+                )
+            )
+            elements.append(Spacer(1, 0.15 * inch))
+
         upgrade = data.get("upgrade_assessment", "")
         if upgrade:
-            elements.append(Paragraph(upgrade, self.styles["BodyText"]))
+            elements.append(Paragraph(f"<b>Assessment:</b> {upgrade}", self.styles["BodyText"]))
             elements.append(Spacer(1, 0.2 * inch))
 
         return elements
