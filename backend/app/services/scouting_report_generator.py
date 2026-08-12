@@ -1,6 +1,6 @@
 import numpy as np
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Optional
 from dataclasses import dataclass
 from enum import Enum
 
@@ -153,6 +153,26 @@ class ScoutingReportGenerator:
         else:
             return PerformanceCategory.BELOW_AVERAGE
 
+    def _positional_percentile(self, player_data: Dict) -> Optional[float]:
+        """True percentile of the player's index among same-position peers."""
+        position = player_data.get("position") or ""
+        index = (player_data.get("performance_index") or {}).get("value")
+        if not position or not isinstance(index, (int, float)):
+            return None
+
+        rows = self._query_db(
+            """
+            SELECT COALESCE((performance_index->>'value')::float, 0) AS v
+            FROM players
+            WHERE position = :position AND performance_index IS NOT NULL
+            """,
+            {"position": position},
+        )
+        values = [float(r[0]) for r in rows if r[0] is not None]
+        if len(values) < 5:
+            return None
+        return round(sum(1 for v in values if v < float(index)) / len(values) * 100, 1)
+
     def generate_executive_summary(self, player_data: Dict, team_data: Dict) -> Dict:
         """Generate executive summary with key findings"""
         match_score = player_data.get("match_score", 0)
@@ -182,13 +202,25 @@ class ScoutingReportGenerator:
             for cat in player_data["metrics"]
             for metric in player_data["metrics"][cat]
         ]
-        performance_percentile = np.mean(percentile_values) if percentile_values else 50.0
+        # C2: averaging percentiles does not yield a percentile — they are not
+        # additive, so a player at p90 and p50 is not "at p70". Rank the player
+        # against same-position peers for a real figure, and keep the metric
+        # average as a separate, clearly named one.
+        metric_percentile_average = float(np.mean(percentile_values)) if percentile_values else 50.0
+        ranked = self._positional_percentile(player_data)
+        performance_percentile = ranked if ranked is not None else metric_percentile_average
 
         return {
             "recommendation": recommendation,
             "action": action,
             "match_score": match_score,
             "overall_percentile": int(performance_percentile),
+            "metric_percentile_average": int(metric_percentile_average),
+            "percentile_basis": (
+                "ranked against same-position players in the database"
+                if ranked is not None
+                else "average of individual metric percentiles (no peer ranking available)"
+            ),
             "key_findings": [
                 f"Player ranks in the {int(performance_percentile)}th percentile overall",
                 f"Match compatibility score: {match_score}%",
@@ -648,14 +680,38 @@ class ScoutingReportGenerator:
             ),
         }
 
+    # C22: pricing anchors, previously inline magic numbers. Declared
+    # curation calibrated to elite European football, not observed market data.
+    ELITE_SPORTING_VALUE = 50_000_000    # sporting value of a 100-index player
+    ELITE_COMMERCIAL_VALUE = 10_000_000  # commercial ceiling before age factor
+    WEEKLY_WAGE_RATE = 0.002             # weekly wage as a share of market value
+
+    # Reference values per role. Units: speed km/h, distance km per 90.
+    PHYSICAL_REFERENCE = {
+        "attack":   {"speed_kmh": 8.8, "distance_km": 10.5, "runs": 32},
+        "midfield": {"speed_kmh": 8.3, "distance_km": 12.0, "runs": 35},
+        "defense":  {"speed_kmh": 8.0, "distance_km": 10.0, "runs": 24},
+    }
+
+    PHYSICAL_GROUP = {
+        "ST": "attack", "RW": "attack", "LW": "attack", "CAM": "attack",
+        "CM": "midfield", "CDM": "midfield", "RM": "midfield", "LM": "midfield",
+        "CB": "defense", "RB": "defense", "LB": "defense", "GK": "defense",
+    }
+
     def generate_physical_profile(self, player_data: Dict) -> Dict:
         """Generate physical and athletic profile"""
-        metrics = player_data["metrics"]["movement"]
+        metrics = player_data.get("metrics", {}).get("movement", {})
 
-        # Calculate physical scores
-        speed_score = min((metrics["average_speed"] / 8.5) * 100, 100)
-        endurance_score = min((metrics["distance_covered_per_90"] / 12) * 100, 100)
-        intensity_score = min((metrics["high_intensity_runs"] / 35) * 100, 100)
+        # C14: one yardstick for every role penalised defenders and keepers,
+        # who will never cover ground like a wide midfielder.
+        # C15: units are declared here — speed in km/h, distance in km per 90.
+        group = self.PHYSICAL_GROUP.get(player_data.get("position"), "midfield")
+        ref = self.PHYSICAL_REFERENCE[group]
+
+        speed_score = min((metrics.get("average_speed", 0) / ref["speed_kmh"]) * 100, 100)
+        endurance_score = min((metrics.get("distance_covered_per_90", 0) / ref["distance_km"]) * 100, 100)
+        intensity_score = min((metrics.get("high_intensity_runs", 0) / ref["runs"]) * 100, 100)
 
         physical_age = player_data["age"]
         if physical_age < 24:
@@ -692,7 +748,12 @@ class ScoutingReportGenerator:
                 "peak_years_remaining": peak_years_remaining,
             },
             "injury_risk_factors": self._assess_injury_risk(player_data),
-            "physical_comparison": f"Ranks {int((speed_score + endurance_score + intensity_score) / 3)}th percentile athletically for position",
+            # C16: this is the mean of three reference-normalised scores, not a
+            # percentile against other players, and used to be labelled as one.
+            "physical_comparison": (
+                f"Athletic score {int((speed_score + endurance_score + intensity_score) / 3)}/100 "
+                f"versus {self.PHYSICAL_GROUP.get(player_data.get('position'), 'midfield')} reference values"
+            ),
         }
 
     def _rate_physical_attribute(self, score: float) -> str:
@@ -916,7 +977,9 @@ class ScoutingReportGenerator:
             player_data["position"], 1.0
         )
 
-        base_sporting_value = (performance_index / 100) * 50000000 * position_importance
+        base_sporting_value = (
+            performance_index / 100
+        ) * self.ELITE_SPORTING_VALUE * position_importance
 
         # Adjust for team needs
         if player_data["position"] in team_data.get("priority_positions", []):
@@ -936,7 +999,7 @@ class ScoutingReportGenerator:
             min(float(index), 100) / 100 if isinstance(index, (int, float)) else 0.5
         )
 
-        return 10000000 * marketability * age_factor
+        return self.ELITE_COMMERCIAL_VALUE * marketability * age_factor
 
     def _calculate_breakeven(
         self, investment: float, sporting_value: float, commercial_value: float
@@ -1032,7 +1095,7 @@ class ScoutingReportGenerator:
     def _calculate_base_wage(self, player_data: Dict, team_data: Dict) -> float:
         """Calculate recommended base wage"""
         # Base on market value and team wage structure
-        value_based_wage = player_data["market_value"] * 0.002  # 0.2% of value per week
+        value_based_wage = player_data["market_value"] * self.WEEKLY_WAGE_RATE
 
         # Adjust for team budget
         budget_factor = min(team_data["budget"] / 200000000, 1.5)  # Normalize to 200M budget
@@ -1160,6 +1223,9 @@ class ScoutingReportGenerator:
 
         return {
             "current_options": peers,
+            # C28: keep the number as a number; the consumer used to parse this
+            # formatted string back with .strip("%+").
+            "performance_improvement_pct": round(improvement, 1),
             "performance_improvement": f"{improvement:+.1f}%",
             "immediate_impact": (
                 "Likely starter" if improvement > 10
@@ -1239,7 +1305,7 @@ class ScoutingReportGenerator:
             return "Significant upgrade - would transform position"
         elif squad_comparison["position_upgrade"]:
             return "Clear upgrade - would improve squad quality"
-        elif float(squad_comparison["performance_improvement"].strip("%+")) > 5:
+        elif (squad_comparison.get("performance_improvement_pct") or 0) > 5:
             return "Marginal upgrade - adds depth and competition"
         else:
             return "Lateral move - consider only if replacing departing player"
@@ -1398,7 +1464,9 @@ class ScoutingReportGenerator:
                         ]
                     )
 
-        return list(set(mitigation_strategies))  # Remove duplicates
+        # C31: set() gave a different ordering on every run, so the same report
+        # listed its mitigations in a different order each time.
+        return list(dict.fromkeys(mitigation_strategies))
 
     def _assess_decision_impact(self, risk_score: float) -> str:
         """Assess how risk should impact decision"""
