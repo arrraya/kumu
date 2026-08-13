@@ -761,6 +761,24 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
            <div className="bg-white p-3 rounded text-center">
              <span className="text-blue-700 font-medium">{report.comparison_analysis.squad_comparison.immediate_impact}</span>
            </div>
+          {/* Which group the percentage is measured against: the club's own
+              squad when it has one, otherwise database peers. Without this the
+              number is ambiguous. */}
+          {(report.comparison_analysis.squad_comparison as any).basis && (
+            <p className="text-xs text-gray-500 mt-3 text-center italic">
+              {(report.comparison_analysis.squad_comparison as any).basis}
+            </p>
+          )}
+          {((report.comparison_analysis.squad_comparison as any).current_options || []).length > 0 && (
+            <div className="mt-3 space-y-1">
+              {((report.comparison_analysis.squad_comparison as any).current_options || []).map((peer: any) => (
+                <div key={peer.name} className="flex justify-between text-xs text-gray-600">
+                  <span>{peer.name}</span>
+                  <span className="font-medium">{peer.performance_index}</span>
+                </div>
+              ))}
+            </div>
+          )}
          </div>
          
          <div className="bg-green-50 p-6 rounded-lg">
