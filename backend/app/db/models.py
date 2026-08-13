@@ -38,6 +38,9 @@ class Team(Base):
     country = Column(String)
     budget = Column(Float)
     formation = Column(String)
+    # "club" or "national": national sides hold real squads from the source
+    # data, but only clubs are valid transfer destinations.
+    team_type = Column(String, default="club")
     playing_style = Column(JSON)
     requirements = Column(JSON)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -45,6 +48,27 @@ class Team(Base):
     # Relationships
     matches = relationship("PlayerTeamMatch", back_populates="team")
     reports = relationship("ScoutingReport", back_populates="team")
+
+
+class SquadMembership(Base):
+    """Who belongs to which team.
+
+    Squad lookups used to compare players.current_team to the team name as
+    strings, so no club ever resolved a squad. `source` records where each link
+    came from — national (real, from the source data), user (assembled in the
+    app) or api (a future provider) — so all three can coexist in one relation.
+    """
+
+    __tablename__ = "squad_memberships"
+
+    id = Column(Integer, primary_key=True, index=True)
+    player_id = Column(Integer, ForeignKey("players.id"), index=True)
+    team_id = Column(Integer, ForeignKey("teams.id"), index=True)
+    source = Column(String, default="user")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    player = relationship("Player")
+    team = relationship("Team")
 
 
 class PlayerTeamMatch(Base):

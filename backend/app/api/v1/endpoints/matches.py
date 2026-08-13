@@ -72,7 +72,11 @@ async def calculate_matches(
     if not player:
         raise HTTPException(status_code=404, detail="Player not found")
 
-    query = db.query(models.Team)
+    # National sides exist as teams so their squads are real, but nobody signs
+    # for a country: transfer destinations are clubs only.
+    query = db.query(models.Team).filter(
+        (models.Team.team_type == "club") | (models.Team.team_type.is_(None))
+    )
     if request.team_ids:
         query = query.filter(models.Team.id.in_([int(t) for t in request.team_ids]))
     teams = query.all()

@@ -51,7 +51,9 @@ def main():
     with engine.begin() as conn:
         conn.execute(text("DELETE FROM scouting_reports"))
         conn.execute(text("DELETE FROM player_team_matches"))
-        conn.execute(text("DELETE FROM teams"))
+        # Only clubs: national teams live in the same table and are seeded
+        # separately from real player data.
+        conn.execute(text("DELETE FROM teams WHERE team_type = 'club' OR team_type IS NULL"))
 
         for i, (name, league, country, budget_m, formation, poss, press, positions, expected) in enumerate(CLUBS, start=1):
             playing_style = {

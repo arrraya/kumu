@@ -322,7 +322,7 @@ def get_team_analytics(
     # Get all players currently in the team
     # This assumes you have a way to track current squad
     # You might need a separate table for this
-    squad_players = db.query(models.Player).filter(models.Player.current_team == db_team.name).all()
+    squad_players = get_squad(db, team_id)
 
     if not squad_players:
         return {
@@ -527,6 +527,25 @@ def update_team_budget(db: Session, team_id: int, new_budget: float) -> Optional
     return db_team
 
 
+def get_squad(db: Session, team_id: int) -> List[models.Player]:
+    """Players belonging to a team, via the membership relation.
+
+    Squad membership used to be inferred by comparing players.current_team to
+    the club name as strings, which never matched: in this dataset that field
+    holds the national side. Any source (national, user, api) writes to the
+    same relation.
+    """
+    return (
+        db.query(models.Player)
+        .join(
+            models.SquadMembership,
+            models.SquadMembership.player_id == models.Player.id,
+        )
+        .filter(models.SquadMembership.team_id == team_id)
+        .all()
+    )
+
+
 def get_team_statistics(db: Session, team_id: int) -> Dict[str, Any]:
     """
     Get comprehensive statistics for a team.
@@ -542,8 +561,7 @@ def get_team_statistics(db: Session, team_id: int) -> Dict[str, Any]:
     if not db_team:
         return {}
 
-    # Get squad statistics
-    squad = db.query(models.Player).filter(models.Player.current_team == db_team.name).all()
+    squad = get_squad(db, team_id)
 
     # Calculate various statistics
     stats = {
