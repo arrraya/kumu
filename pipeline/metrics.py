@@ -278,7 +278,14 @@ def normalize_indices(players: dict) -> dict:
         mean, spread = scales[pos]
         z = (float(index_data["value"]) - mean) / spread
         index_data["raw_value"] = round(float(index_data["value"]), 1)
-        index_data["value"] = round(max(40.0, min(100.0, 70.0 + z * 10.0)), 1)
+        # Clamping at 100 stacked every outlier on the ceiling: Messi and
+        # Mbappé both read exactly 100.0 and stopped being distinguishable.
+        # tanh compresses instead of cutting — inside roughly two standard
+        # deviations the scale is nearly linear, beyond that it eases off and
+        # approaches the bounds without ever reaching them, so ordering among
+        # extreme players survives.
+        scaled = 70.0 + 30.0 * float(np.tanh(z / 2.5))
+        index_data["value"] = round(scaled, 1)
 
     return players
 
