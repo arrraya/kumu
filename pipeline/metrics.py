@@ -14,6 +14,58 @@ import xgboost as xgb
 
 CACHE_DIR = os.path.join(os.path.dirname(__file__), ".cache")
 
+# StatsBomb's verbose positions grouped by what a match rating should reward.
+POSITION_GROUP = {
+    "Right Center Forward": "attack", "Left Center Forward": "attack",
+    "Center Forward": "attack", "Secondary Striker": "attack",
+    "Right Wing": "attack", "Left Wing": "attack",
+    "Center Attacking Midfield": "attack",
+    "Right Attacking Midfield": "attack", "Left Attacking Midfield": "attack",
+    "Center Midfield": "midfield", "Right Center Midfield": "midfield",
+    "Left Center Midfield": "midfield",
+    "Center Defensive Midfield": "midfield",
+    "Right Defensive Midfield": "midfield", "Left Defensive Midfield": "midfield",
+    "Right Midfield": "midfield", "Left Midfield": "midfield",
+    "Right Back": "defense", "Left Back": "defense",
+    "Right Center Back": "defense", "Left Center Back": "defense",
+    "Center Back": "defense",
+    "Right Wing Back": "defense", "Left Wing Back": "defense",
+    "Goalkeeper": "defense",
+}
+
+
+def match_rating(stats: dict, group: str) -> float:
+    """Rate one match according to what the role is actually asked to do.
+
+    A single offensive formula (goals, assists, key passes, pass completion)
+    left defenders with nothing to vary on but completion rate, which barely
+    moves between centre-backs — so every centre-back in the database came out
+    with practically the same index. Uncapped on purpose: a hat-trick should
+    stand above a one-goal game rather than hitting a ceiling.
+    """
+    goals = stats.get("goals", 0)
+    assists = stats.get("assists", 0)
+    key_passes = stats.get("key_passes", 0)
+    shots = stats.get("shots", 0)
+    completion = stats.get("pass_completion", 0.0)
+    progressive = stats.get("progressive_passes", 0)
+    defensive = stats.get("tackles", 0) + stats.get("interceptions", 0)
+
+    if group == "attack":
+        return (
+            5.0 + goals * 1.5 + assists * 1.0 + key_passes * 0.3
+            + shots * 0.15 + completion * 1.5
+        )
+    if group == "midfield":
+        return (
+            5.0 + completion * 2.0 + progressive * 0.10 + key_passes * 0.4
+            + defensive * 0.20 + goals * 1.2 + assists * 0.9
+        )
+    return (
+        5.0 + completion * 2.0 + defensive * 0.25 + progressive * 0.08
+        + key_passes * 0.3 + goals * 1.2 + assists * 0.9
+    )
+
 
 def load_events() -> pd.DataFrame:
     with open(os.path.join(CACHE_DIR, "all_events.pkl"), "rb") as f:
@@ -113,16 +165,32 @@ def build_player_metrics(events: pd.DataFrame, model) -> dict:
             m_assists = int(m_passes["pass_goal_assist"].fillna(False).sum()) if "pass_goal_assist" in m_passes else 0
             m_keyp = int(m_passes["pass_shot_assist"].fillna(False).sum()) if "pass_shot_assist" in m_passes else 0
             completion = (m_completed / len(m_passes)) if len(m_passes) else 0.0
-            # simple composite rating on a ~0-10 scale
-            rating = min(10.0, 5.0 + m_goals * 1.5 + m_assists * 1.0 + m_keyp * 0.3 + completion * 2.0)
-            history.append({
+
+            # Defensive and progressive output per match, so roles that do not
+            # score have something real to be judged on.
+            m_tackles = len(mev[(mev["type"] == "Duel") & (mev.get("duel_type") == "Tackle")]) if "duel_type" in mev else 0
+            m_interceptions = len(mev[mev["type"] == "Interception"])
+            m_valid = m_passes.dropna(subset=["location", "pass_end_location"])
+            if len(m_valid):
+                p_start = np.array(m_valid["location"].tolist(), dtype=float)
+                p_end = np.array(m_valid["pass_end_location"].tolist(), dtype=float)
+                m_progressive = int(((p_end[:, 0] - p_start[:, 0]) >= 15).sum())
+            else:
+                m_progressive = 0
+
+            entry = {
                 "match_id": int(match_id),
-                "rating": round(float(rating), 2),
                 "goals": m_goals,
                 "assists": m_assists,
                 "key_passes": m_keyp,
+                "shots": len(m_shots),
+                "tackles": m_tackles,
+                "interceptions": m_interceptions,
+                "progressive_passes": m_progressive,
                 "pass_completion": round(float(completion), 3),
-            })
+            }
+            entry["rating"] = round(float(match_rating(entry, POSITION_GROUP.get(position, "midfield"))), 2)
+            history.append(entry)
 
         ratings = [h["rating"] for h in history]
         if len(ratings) >= 3:
@@ -171,6 +239,50 @@ def build_player_metrics(events: pd.DataFrame, model) -> dict:
     return players
 
 
+def normalize_indices(players: dict) -> dict:
+    """Put every position on the same index scale.
+
+    Role-aware ratings fixed the compression among defenders, but left the
+    scales incomparable across roles: a centre-back's rating rests on a high,
+    steady base (pass completion, constant defensive actions) while a striker
+    goes scoreless in most matches, so defenders' medians sat ~17 points above
+    forwards'. Several consumers compare across positions — the market price,
+    the club's expected_index, the dashboard's top performers — so the index is
+    rescaled within each position: 70 is the typical player for that role and
+    each 10 points is one standard deviation. Ordering inside a position is
+    untouched, and the pre-normalisation figure is kept as raw_value.
+    """
+    from collections import defaultdict
+    from benchmarks import POSITION_MAP
+
+    by_position = defaultdict(list)
+    for p in players.values():
+        pos = POSITION_MAP.get(p.get("position") or "")
+        index = (p.get("performance_index") or {}).get("value")
+        if pos and isinstance(index, (int, float)):
+            by_position[pos].append(float(index))
+
+    scales = {}
+    for pos, values in by_position.items():
+        if len(values) >= 5:
+            spread = float(np.std(values))
+            scales[pos] = (float(np.mean(values)), spread if spread > 0 else 1.0)
+
+    for p in players.values():
+        index_data = p.get("performance_index")
+        if not index_data:
+            continue
+        pos = POSITION_MAP.get(p.get("position") or "")
+        if pos not in scales:
+            continue
+        mean, spread = scales[pos]
+        z = (float(index_data["value"]) - mean) / spread
+        index_data["raw_value"] = round(float(index_data["value"]), 1)
+        index_data["value"] = round(max(40.0, min(100.0, 70.0 + z * 10.0)), 1)
+
+    return players
+
+
 if __name__ == "__main__":
     events = load_events()
     print(f"Events loaded: {len(events)}")
@@ -179,6 +291,8 @@ if __name__ == "__main__":
     print("Aggregating player metrics...")
     players = build_player_metrics(events, model)
     print(f"Players with >=90 minutes: {len(players)}")
+    players = normalize_indices(players)
+    print("Indices normalised within position")
 
     out = os.path.join(CACHE_DIR, "player_metrics.pkl")
     with open(out, "wb") as f:
