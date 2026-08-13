@@ -546,6 +546,52 @@ def get_squad(db: Session, team_id: int) -> List[models.Player]:
     )
 
 
+def add_player_to_squad(
+    db: Session, team_id: int, player_id: int, source: str = "user"
+) -> Optional[List[models.Player]]:
+    """Put a player in a team's squad.
+
+    A user-assembled signing is a move, not an addition: the player leaves any
+    other club squad he was placed in, so squads stay mutually exclusive and
+    "who does this club already have" keeps meaning something. National squads
+    (source='national') are left alone — they reflect the source data.
+    """
+    team = get_team(db, team_id)
+    player = db.query(models.Player).filter(models.Player.id == player_id).first()
+    if not team or not player:
+        return None
+
+    if source == "user":
+        db.query(models.SquadMembership).filter(
+            models.SquadMembership.player_id == player_id,
+            models.SquadMembership.source == "user",
+        ).delete(synchronize_session=False)
+
+    already_there = (
+        db.query(models.SquadMembership)
+        .filter_by(player_id=player_id, team_id=team_id, source=source)
+        .first()
+    )
+    if not already_there:
+        db.add(models.SquadMembership(player_id=player_id, team_id=team_id, source=source))
+
+    db.commit()
+    return get_squad(db, team_id)
+
+
+def remove_player_from_squad(
+    db: Session, team_id: int, player_id: int, source: str = "user"
+) -> bool:
+    """Take a player out of a team's squad."""
+    removed = (
+        db.query(models.SquadMembership)
+        .filter_by(player_id=player_id, team_id=team_id, source=source)
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    return removed > 0
+
+
 def get_team_statistics(db: Session, team_id: int) -> Dict[str, Any]:
     """
     Get comprehensive statistics for a team.

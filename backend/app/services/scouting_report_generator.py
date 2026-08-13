@@ -1182,26 +1182,47 @@ class ScoutingReportGenerator:
         }
 
     def _compare_with_squad(self, player_data: Dict, team_data: Dict) -> Dict:
-        """Compare against real positional peers in Kumu's database.
+        """Compare the player against the target club's actual squad.
 
-        Club squads are not available in the current dataset, so this is an
-        explicit peer comparison rather than a squad one.
+        This is the comparison that gives a signing its meaning: does he improve
+        on what the club already has? Falls back to same-position peers across
+        the database when the club has no squad yet, which is all this could do
+        before squad membership existed.
         """
         position = player_data.get("position") or ""
         name = player_data.get("name") or ""
         player_idx = float((player_data.get("performance_index") or {}).get("value", 0) or 0)
+        team_id = team_data.get("id")
 
-        rows = self._query_db(
-            """
-            SELECT name, current_team, performance_index
-            FROM players
-            WHERE position = :position AND name <> :name
-              AND performance_index IS NOT NULL
-            ORDER BY COALESCE((performance_index->>'value')::float, 0) DESC
-            LIMIT 5
-            """,
-            {"position": position, "name": name},
-        )
+        rows = []
+        if team_id:
+            rows = self._query_db(
+                """
+                SELECT p.name, p.current_team, p.performance_index
+                FROM squad_memberships m
+                JOIN players p ON p.id = m.player_id
+                WHERE m.team_id = :team_id AND p.position = :position
+                  AND p.name <> :name AND p.performance_index IS NOT NULL
+                ORDER BY COALESCE((p.performance_index->>'value')::float, 0) DESC
+                LIMIT 5
+                """,
+                {"team_id": int(team_id), "position": position, "name": name},
+            )
+
+        basis = f"vs {position}s already in the squad"
+        if not rows:
+            rows = self._query_db(
+                """
+                SELECT name, current_team, performance_index
+                FROM players
+                WHERE position = :position AND name <> :name
+                  AND performance_index IS NOT NULL
+                ORDER BY COALESCE((performance_index->>'value')::float, 0) DESC
+                LIMIT 5
+                """,
+                {"position": position, "name": name},
+            )
+            basis = f"vs top {position} peers in the database (no squad set for this club)"
 
         peers = []
         for r in rows:
@@ -1212,10 +1233,11 @@ class ScoutingReportGenerator:
         if not peers:
             return {
                 "current_options": [],
+                "performance_improvement_pct": None,
                 "performance_improvement": "n/a",
-                "immediate_impact": "No peer data available",
+                "immediate_impact": "No comparable players available",
                 "position_upgrade": False,
-                "basis": "no positional peers found",
+                "basis": "no comparison group found",
             }
 
         avg_peer = float(np.mean([p["performance_index"] for p in peers]))
@@ -1223,8 +1245,6 @@ class ScoutingReportGenerator:
 
         return {
             "current_options": peers,
-            # C28: keep the number as a number; the consumer used to parse this
-            # formatted string back with .strip("%+").
             "performance_improvement_pct": round(improvement, 1),
             "performance_improvement": f"{improvement:+.1f}%",
             "immediate_impact": (
@@ -1233,7 +1253,7 @@ class ScoutingReportGenerator:
                 else "Squad depth"
             ),
             "position_upgrade": improvement > 15,
-            "basis": f"vs top {len(peers)} {position} peers in Kumu database",
+            "basis": f"{basis} ({len(peers)} compared)",
         }
 
     def _compare_with_league_peers(self, player_data: Dict, team_data: Dict) -> Dict:

@@ -119,6 +119,48 @@ def get_teams_needing_position(
 # --- Analytics & Statistics ---
 
 
+@router.get("/{team_id}/squad")
+def get_squad(team_id: int, db: Session = Depends(get_db)):
+    """List the players currently in a team's squad"""
+    team = team_service.get_team(db, team_id)
+    if not team:
+        raise HTTPException(status_code=404, detail="Team not found")
+    squad = team_service.get_squad(db, team_id)
+    return {
+        "team_id": team_id,
+        "team_name": team.name,
+        "squad_size": len(squad),
+        "players": [
+            {
+                "id": p.id,
+                "name": p.name,
+                "position": p.position,
+                "nationality": p.nationality,
+                "market_value": p.market_value,
+                "performance_index": (p.performance_index or {}).get("value"),
+            }
+            for p in squad
+        ],
+    }
+
+
+@router.post("/{team_id}/squad/{player_id}")
+def add_to_squad(team_id: int, player_id: int, db: Session = Depends(get_db)):
+    """Sign a player into a club's squad"""
+    squad = team_service.add_player_to_squad(db, team_id, player_id)
+    if squad is None:
+        raise HTTPException(status_code=404, detail="Team or player not found")
+    return {"team_id": team_id, "squad_size": len(squad), "signed": player_id}
+
+
+@router.delete("/{team_id}/squad/{player_id}")
+def remove_from_squad(team_id: int, player_id: int, db: Session = Depends(get_db)):
+    """Release a player from a club's squad"""
+    if not team_service.remove_player_from_squad(db, team_id, player_id):
+        raise HTTPException(status_code=404, detail="Player not in this squad")
+    return {"team_id": team_id, "released": player_id}
+
+
 @router.get("/{team_id}/analytics")
 def get_team_analytics(
     team_id: int,
