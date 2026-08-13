@@ -1211,18 +1211,30 @@ class ScoutingReportGenerator:
 
         basis = f"vs {position}s already in the squad"
         if not rows:
+            # Players around the positional median, not the top five: ranking a
+            # signing against the best in the world made almost everyone look
+            # like a downgrade, which is not a neutral comparison group.
             rows = self._query_db(
                 """
-                SELECT name, current_team, performance_index
-                FROM players
-                WHERE position = :position AND name <> :name
-                  AND performance_index IS NOT NULL
-                ORDER BY COALESCE((performance_index->>'value')::float, 0) DESC
+                WITH stats AS (
+                    SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (
+                        ORDER BY COALESCE((performance_index->>'value')::float, 0)
+                    ) AS median_index
+                    FROM players
+                    WHERE position = :position AND performance_index IS NOT NULL
+                )
+                SELECT p.name, p.current_team, p.performance_index
+                FROM players p, stats
+                WHERE p.position = :position AND p.name <> :name
+                  AND p.performance_index IS NOT NULL
+                ORDER BY ABS(
+                    COALESCE((p.performance_index->>'value')::float, 0) - stats.median_index
+                ) ASC
                 LIMIT 5
                 """,
                 {"position": position, "name": name},
             )
-            basis = f"vs top {position} peers in the database (no squad set for this club)"
+            basis = f"vs typical {position}s in the database (no squad set for this club)"
 
         peers = []
         for r in rows:

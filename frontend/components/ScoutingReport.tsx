@@ -147,6 +147,10 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
   const [report, setReport] = useState<ScoutingReportData | null>(null);
   const [activeSection, setActiveSection] = useState('executive');
   const [loading, setLoading] = useState(true);
+  // Destination clubs, so a report can be run against any club rather than
+  // only the ones that made the player's top-10 match cards.
+  const [clubs, setClubs] = useState<any[]>([]);
+  const [switchingTeam, setSwitchingTeam] = useState(false);
 
   useEffect(() => {
     // Load report from localStorage or generate new one
@@ -161,6 +165,34 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
       setLoading(false);
     }
   }, [player, match]);
+
+  useEffect(() => {
+    const loadClubs = async () => {
+      try {
+        const teams = await api.teams.getAll({ limit: 100 });
+        setClubs((teams || []).filter((t: any) => t.teamType !== 'national'));
+      } catch (error) {
+        console.error('Could not load clubs:', error);
+      }
+    };
+    loadClubs();
+  }, []);
+
+  const regenerateForTeam = async (teamId: string) => {
+    const playerId = report?.report_metadata?.player_id;
+    if (!playerId || !teamId) return;
+    try {
+      setSwitchingTeam(true);
+      const fresh = await api.reports.generate(String(playerId), String(teamId));
+      localStorage.setItem('currentReport', JSON.stringify(fresh));
+      setReport(fresh);
+    } catch (error) {
+      console.error('Could not regenerate report:', error);
+      alert('Could not generate the report for that club.');
+    } finally {
+      setSwitchingTeam(false);
+    }
+  };
 
   const [downloadingPdf, setDownloadingPdf] = useState(false);
 
@@ -968,9 +1000,25 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
        <div className="flex items-center justify-between">
          <div>
            <h1 className="text-2xl font-bold text-gray-900">Scouting Report</h1>
-           <p className="text-gray-600 mt-1">
-             {report.report_metadata.player_name} → {report.report_metadata.team_name}
-           </p>
+           <div className="text-gray-600 mt-1 flex flex-wrap items-center gap-2">
+             <span>{report.report_metadata.player_name} →</span>
+             {clubs.length > 0 ? (
+               <select
+                 value={String(report.report_metadata.team_id ?? '')}
+                 onChange={(e) => regenerateForTeam(e.target.value)}
+                 disabled={switchingTeam}
+                 className="border rounded-md px-2 py-1 text-sm bg-white disabled:opacity-60"
+                 title="Run this report against another club"
+               >
+                 {clubs.map((c: any) => (
+                   <option key={c.id} value={String(c.id)}>{c.name}</option>
+                 ))}
+               </select>
+             ) : (
+               <span>{report.report_metadata.team_name}</span>
+             )}
+             {switchingTeam && <span className="text-sm text-gray-400">regenerating…</span>}
+           </div>
            <p className="text-sm text-gray-500 mt-1">
              Generated: {new Date(report.report_metadata.generated_date).toLocaleDateString()}
            </p>
