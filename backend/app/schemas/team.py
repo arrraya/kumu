@@ -51,7 +51,10 @@ class Team(TeamBase):
     external_id: Optional[str] = None  # Make optional since some teams don't have external IDs
     playing_style: PlayingStyle
     logo: Optional[str] = None
-    created_at: datetime
+    # "club" or "national" — the UI needs this to keep national sides out of
+    # the transfer market while still showing their real squads.
+    team_type: Optional[str] = "club"
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

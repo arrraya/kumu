@@ -54,9 +54,14 @@ export const apiService = {
   },
   
   teams: {
-    getAll: async (): Promise<Team[]> => {
-      const response = await api.get('/api/v1/teams');
-      return response.data;
+    getAll: async (params?: { limit?: number }): Promise<any[]> => {
+      const response = await api.get('/api/v1/teams/', {
+        params: { limit: params?.limit ?? 100 },
+      });
+      return (response.data || []).map((t: any) => ({
+        ...t,
+        teamType: t.team_type ?? t.teamType ?? 'club',
+      }));
     },
     
     getById: async (id: string): Promise<Team> => {
@@ -104,6 +109,25 @@ export const apiService = {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
+    }
+  },
+
+  squads: {
+    get: async (teamId: number) => {
+      const response = await api.get(`/api/v1/teams/${teamId}/squad`);
+      return response.data;
+    },
+    add: async (teamId: number, playerId: number) => {
+      const response = await api.post(`/api/v1/teams/${teamId}/squad/${playerId}`);
+      return response.data;
+    },
+    remove: async (teamId: number, playerId: number) => {
+      const response = await api.delete(`/api/v1/teams/${teamId}/squad/${playerId}`);
+      return response.data;
+    },
+    statistics: async (teamId: number) => {
+      const response = await api.get(`/api/v1/teams/${teamId}/statistics`);
+      return response.data;
     }
   },
 

@@ -10,6 +10,7 @@ const PlayerMatching = dynamic(() => import('@/components/PlayerMatching'), { ss
 const ScoutingReport = dynamic(() => import('@/components/ScoutingReport'), { ssr: false })
 const Analytics = dynamic(() => import('@/components/Analytics'), { ssr: false })
 const Market = dynamic(() => import('@/components/Market'), { ssr: false })
+const Squads = dynamic(() => import('@/components/Squads'), { ssr: false })
 
 export default function Home() {
   const [activeView, setActiveView] = useState('dashboard')
@@ -49,6 +50,10 @@ export default function Home() {
       
       {activeView === 'market' && (
         <Market />
+      )}
+      
+      {activeView === 'squads' && (
+        <Squads />
       )}
     </div>
   )
