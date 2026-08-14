@@ -158,17 +158,21 @@ const Squads: React.FC = () => {
                 <div className="text-sm text-gray-600">Squad value</div>
               </div>
               <div className="bg-white rounded-lg shadow p-4">
+                {/* National sides carry no transfer budget, so the overrun
+                    warning does not apply to them — it fired for every one of
+                    them because their budget is zero by construction. */}
                 <div className={`text-2xl font-bold ${
-                  (stats.total_market_value || 0) > (stats.budget_remaining || 0)
+                  !isNational && (stats.total_market_value || 0) > (stats.budget_remaining || 0)
                     ? 'text-red-600' : ''}`}>
-                  {money(stats.budget_remaining)}
+                  {isNational ? '—' : money(stats.budget_remaining)}
                 </div>
-                <div className="text-sm text-gray-600">Budget</div>
-                {/* Signings are not blocked by budget, so flag the overrun
-                    rather than letting an impossible squad look fine. */}
-                {(stats.total_market_value || 0) > (stats.budget_remaining || 0) && (
-                  <div className="text-xs text-red-600 mt-1">Squad exceeds budget</div>
-                )}
+                <div className="text-sm text-gray-600">
+                  {isNational ? 'No transfer budget' : 'Budget'}
+                </div>
+                {!isNational &&
+                  (stats.total_market_value || 0) > (stats.budget_remaining || 0) && (
+                    <div className="text-xs text-red-600 mt-1">Squad exceeds budget</div>
+                  )}
               </div>
               <div className="bg-white rounded-lg shadow p-4">
                 <div className="text-2xl font-bold">
