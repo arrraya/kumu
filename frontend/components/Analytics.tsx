@@ -57,6 +57,14 @@ const PlayerPicker: React.FC<{
                 Index: {value.performanceIndex?.value?.toFixed(1) ?? 'n/a'}
                 {value.performance_history?.length ? ` • ${value.performance_history.length} matches` : ''}
               </div>
+              {/* Without an index the value shown is a floor estimate, not a
+                  reading of this player's output — say so rather than letting
+                  the figure look as solid as everyone else's. */}
+              {!value.performanceIndex?.value && (
+                <div className="text-xs text-amber-700 mt-1">
+                  Too few matches for an index — value is a floor estimate
+                </div>
+              )}
             </div>
             <button onClick={() => { onChange(null); setQuery('') }}
               className="text-xs text-gray-500 hover:text-gray-800">change</button>

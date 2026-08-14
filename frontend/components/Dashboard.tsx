@@ -44,8 +44,10 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveView }) => {
       // Teams are a separate call; failing here should not blank the dashboard.
       let totalTeams = 0
       try {
-        const teams = await api.teams.getAll()
-        totalTeams = (teams || []).length
+        // Only clubs: national sides live in the same table but are squads,
+        // not entities a user operates on from this dashboard.
+        const teams = await api.teams.getAll({ limit: 100 })
+        totalTeams = (teams || []).filter((t: any) => t.teamType !== 'national').length
       } catch (e) {
         console.error('Teams fetch failed:', e)
       }
@@ -81,7 +83,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveView }) => {
       color: 'blue'
     },
     {
-      title: 'Listed Teams',
+      title: 'Listed Clubs',
       value: stats.totalTeams.toString(),
       icon: Target,
       color: 'green'
