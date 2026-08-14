@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -8,6 +9,8 @@ from app.services.scouting_report_generator import ScoutingReportGenerator
 from app.services.pdf_generator import PDFReportGenerator
 import app.services.player_service as player_service
 import app.services.team_service as team_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -79,6 +82,19 @@ async def generate_report(
     # Same adapter the generator exposes, so the metric defaults live in
     # one place instead of being duplicated here.
     player_data = report_generator.build_player_data(player)
+
+    # Score this player against this club before generating the report. Without
+    # it the generator fell back to a hardcoded 75, so the recommendation was
+    # decided by a constant and could contradict the player's own percentile.
+    try:
+        from app.services.player_team_matcher import PlayerTeamMatcher
+
+        fit = PlayerTeamMatcher().calculate_fit_score(db, player.id, team.id)
+        if isinstance(fit.get("overall_score"), (int, float)):
+            player_data["match_score"] = float(fit["overall_score"])
+            player_data["match_breakdown"] = fit.get("breakdown", {})
+    except Exception as exc:  # noqa: BLE001 - report is still worth producing
+        logger.warning("Match scoring failed for player %s: %s", player.id, exc)
 
     team_data = {
         "id": team.id,
