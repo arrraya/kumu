@@ -24,7 +24,19 @@ MAX_MATCH_MOVE = 0.10   # cap a single match at +/-10% so outliers stay plausibl
 
 
 def match_score(entry: dict) -> float:
-    """Continuous, uncapped per-match performance score."""
+    """Per-match performance score, taken from the rating metrics.py computed.
+
+    This module used to recompute the score with its own copy of the old,
+    purely offensive formula (goals, assists, key passes, pass completion).
+    When metrics.py moved to role-aware ratings, that copy silently kept the
+    retired formula, so defenders were still priced as if only pass completion
+    mattered — which is why their prices barely moved. Reading the stored
+    rating removes the duplication that caused the drift.
+    """
+    rating = entry.get("rating")
+    if isinstance(rating, (int, float)):
+        return float(rating)
+    # Pre-rating history: fall back so old rows still produce a series.
     return (
         5.0
         + (entry.get("goals") or 0) * 1.5
@@ -34,7 +46,9 @@ def match_score(entry: dict) -> float:
     )
 
 
-def build_series(history: list, current_value: float, baseline: float) -> dict | None:
+def build_series(
+    history: list, current_value: float, baseline: float, spread: float = 0.0
+) -> dict | None:
     """Turn a match history into a price series ending at current_value.
 
     `baseline` is the average match score of the player's POSITION peers, not
@@ -48,10 +62,16 @@ def build_series(history: list, current_value: float, baseline: float) -> dict |
 
     scores = [match_score(h) for h in history]
 
-    # compounding index from per-match excess performance
+    # Price how UNUSUAL the match was for the role, not the raw gap. Defenders
+    # score in a narrow band by nature, so measuring the gap in absolute terms
+    # left their prices flat while forwards swung freely. Dividing by the
+    # position's own spread puts an exceptional game for a centre-back on the
+    # same footing as an exceptional game for a striker.
+    unit = spread if spread and spread > 0 else (baseline * 0.15 if baseline else 1.0)
+
     index, cumulative = [], 1.0
     for s in scores:
-        ret = ((s - baseline) / baseline) * SENSITIVITY
+        ret = ((s - baseline) / unit) * SENSITIVITY
         ret = max(-MAX_MATCH_MOVE, min(MAX_MATCH_MOVE, ret))
         cumulative *= (1.0 + ret)
         index.append(cumulative)
@@ -123,6 +143,9 @@ def main():
         baselines = {
             pos: float(np.mean(scores)) for pos, scores in by_position.items() if scores
         }
+        spreads = {
+            pos: float(np.std(scores)) for pos, scores in by_position.items() if len(scores) > 1
+        }
         overall = float(np.mean([s for v in by_position.values() for s in v])) if by_position else 0.0
         print("Position baselines:", {k: round(v, 2) for k, v in sorted(baselines.items())})
 
@@ -131,7 +154,8 @@ def main():
         built = 0
         for pid, name, position, value, history in rows:
             baseline = baselines.get(position or "?", overall)
-            data = build_series(history or [], float(value or 0), baseline)
+            spread = spreads.get(position or "?", 0.0)
+            data = build_series(history or [], float(value or 0), baseline, spread)
             if not data:
                 continue
             conn.execute(text("""
