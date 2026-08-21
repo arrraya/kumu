@@ -8,6 +8,7 @@ Honesty notes (contract E.5):
 - market_value is Kumu-ESTIMATED from performance index (declared, not scraped).
 - age is a neutral estimate (26) until a birth-date source is connected.
 """
+import hashlib
 import os
 import pickle
 
@@ -19,6 +20,9 @@ CACHE_DIR = os.path.join(os.path.dirname(__file__), ".cache")
 MIN_MINUTES = 180          # at least ~2 full matches for stable metrics
 ESTIMATED_AGE = 26         # neutral placeholder until a birth-date source exists
 LEAGUE_LABEL = "World Cup 2022"
+# Namespaces the identifier by source, so a future provider feed can coexist
+# with this one without ids colliding.
+SOURCE_PREFIX = "wc2022"
 
 
 def estimate_market_value(perf_index: dict | None) -> float:
@@ -70,6 +74,19 @@ def fetch_player_countries() -> dict:
 from benchmarks import POSITION_MAP  # noqa: E402
 
 
+def stable_external_id(full_name: str) -> str:
+    """Identifier that stays the same across runs.
+
+    This used to be built from hash(full_name), but Python randomises string
+    hashing per process, so every run minted new ids for the same players.
+    That made incremental updates impossible — the only way to refresh data was
+    to wipe the table, which also destroyed squads and saved reports. A digest
+    is deterministic, so the same player keeps his id and can simply be updated.
+    """
+    digest = hashlib.sha1(full_name.strip().lower().encode("utf-8")).hexdigest()
+    return f"{SOURCE_PREFIX}_{digest[:16]}"
+
+
 def main():
     db_url = os.environ.get("DATABASE_URL")
     if not db_url:
@@ -92,7 +109,7 @@ def main():
             continue
         nickname, country = names.get(full_name, (full_name, None))
         rows.append({
-            "external_id": f"wc2022_{abs(hash(full_name)) % 10**9}",
+            "external_id": stable_external_id(full_name),
             "name": nickname,
             "age": ESTIMATED_AGE,
             "position": pos,
@@ -108,10 +125,15 @@ def main():
 
     import json
     with engine.begin() as conn:
-        # wipe dependent tables first (FK constraints), then players
-        conn.execute(text("DELETE FROM scouting_reports"))
-        conn.execute(text("DELETE FROM player_team_matches"))
-        conn.execute(text("DELETE FROM players"))
+        # Refresh in place instead of wiping. The old version deleted every
+        # player on each run, which cascaded into squad_memberships and took
+        # user-built squads and saved reports with it. With a stable
+        # external_id the same player can simply be updated, so a future
+        # provider feed can refresh data without destroying anything.
+        conn.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS players_external_id_key "
+            "ON players (external_id)"
+        ))
 
         for r in rows:
             conn.execute(text("""
@@ -123,6 +145,17 @@ def main():
                         CAST(:performance_index AS JSON),
                         CAST(:metrics AS JSON),
                         CAST(:performance_history AS JSON))
+                ON CONFLICT (external_id) DO UPDATE SET
+                    name = EXCLUDED.name,
+                    age = EXCLUDED.age,
+                    position = EXCLUDED.position,
+                    nationality = EXCLUDED.nationality,
+                    current_team = EXCLUDED.current_team,
+                    market_value = EXCLUDED.market_value,
+                    performance_index = EXCLUDED.performance_index,
+                    metrics = EXCLUDED.metrics,
+                    performance_history = EXCLUDED.performance_history,
+                    updated_at = NOW()
             """), {
                 **r,
                 "performance_index": json.dumps(r["performance_index"]),
