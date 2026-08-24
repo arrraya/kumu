@@ -280,12 +280,21 @@ class PlayerTeamMatcher:
             return 0.7  # unknown value or budget: neutral, never a bonus
 
         share = player.market_value / team.budget
+
+        # Affordability is still a gate — cheapness is never rewarded — but a
+        # flat 1.0 for everything comfortably affordable made this component
+        # constant across most moves, so it carried no information. Grading the
+        # easy range by how much of the budget the fee consumes distinguishes
+        # "the club barely notices" from "this is their signing of the year",
+        # which is a real difference to a sporting director.
+        if share <= 0.05:
+            return 1.0                                      # pocket change
         if share <= 0.25:
-            return 1.0
+            return 1.0 - (share - 0.05) * (0.15 / 0.20)     # 1.00 -> 0.85
         if share <= 0.60:
-            return 1.0 - (share - 0.25) * (0.4 / 0.35)
+            return 0.85 - (share - 0.25) * (0.25 / 0.35)    # 0.85 -> 0.60
         if share <= 1.0:
-            return 0.6 - (share - 0.60) * (0.35 / 0.40)
+            return 0.6 - (share - 0.60) * (0.35 / 0.40)     # 0.60 -> 0.25
         return max(0.1, 0.25 - (share - 1.0) * 0.15)
 
     def _calculate_level_fit(self, player: Player, team: Team) -> float:
@@ -309,23 +318,59 @@ class PlayerTeamMatcher:
             return 1.0
         return max(0.5, 1.0 - (ratio - 1.25) * 0.8)
 
-    def calculate_growth_potential(self, player: Player) -> float:
-        """Calculate player's growth potential"""
-        # Age factor
-        age_score = max(0, 1 - (player.age - 23) / 15) if player.age < 30 else 0.2
+    # Age the pipeline assigns when no birth date is available in the source
+    ASSUMED_AGE = 26
 
-        # Performance trend
-        perf_index = player.calculate_performance_index()
-        trend_score = min(1.0, 0.5 + perf_index["trend"] / 10)
+    def calculate_growth_potential(self, player: Player, team: Team = None) -> float:
+        """How much this player stands to develop AT THIS CLUB.
 
-        return age_score * 0.6 + trend_score * 0.4
+        This used to take only the player, so the same number repeated across
+        every destination and the component never helped choose between clubs.
+        Development is a two-sided thing: the player brings age and trajectory,
+        the club brings a level to grow into. A rising player has room at a club
+        that operates above him and little at one he already outgrows.
+        """
+        index_data = getattr(player, "performance_index", None) or {}
+        index = index_data.get("value") if isinstance(index_data, dict) else None
+        if not isinstance(index, (int, float)):
+            index = player.calculate_performance_index().get("value", 70)
+
+        # Trajectory: is he trending up?
+        trend = player.calculate_performance_index().get("trend", 0)
+        trend_score = max(0.0, min(1.0, 0.5 + float(trend) / 10))
+
+        # Age is uniform in this dataset (no birth dates available), so it is
+        # held neutral rather than pretending to discriminate. Real ages make
+        # this branch meaningful without further changes.
+        age = getattr(player, "age", None)
+        age_score = 0.5 if not age or age == self.ASSUMED_AGE else (
+            max(0.0, 1 - (age - 23) / 15) if age < 30 else 0.2
+        )
+
+        if team is None:
+            return age_score * 0.4 + trend_score * 0.6
+
+        # Headroom: how far the club's level sits above the player's.
+        expected = getattr(team, "expected_index", None)
+        if not expected:
+            headroom_score = 0.5
+        else:
+            gap = (float(expected) - float(index)) / 20.0
+            if gap >= 0:
+                # Room to grow, best when the club is a clear step up
+                headroom_score = min(1.0, 0.55 + gap * 0.9)
+            else:
+                # Already above the club's level: little left to gain there
+                headroom_score = max(0.15, 0.55 + gap * 0.7)
+
+        return age_score * 0.25 + trend_score * 0.35 + headroom_score * 0.40
 
     def calculate_match_score(self, player: Player, team: Team) -> Dict:
         """Calculate overall match score between player and team"""
         tactical = self.calculate_tactical_fit(player, team)
         performance = self.calculate_performance_fit(player, team)
         financial = self.calculate_financial_fit(player, team)
-        growth = self.calculate_growth_potential(player)
+        growth = self.calculate_growth_potential(player, team)
 
         overall = (
             tactical * self.weights["tactical_fit"]
