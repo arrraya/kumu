@@ -942,19 +942,35 @@ class ScoutingReportGenerator:
             "vs_comparables": f"{((value_ratio - 1) * 100):+.1f}% vs similar transfers",
         }
 
+    # Years of contribution counted in the ROI. Declared curation: a typical
+    # contract length over which a signing is expected to pay back.
+    ROI_HORIZON_YEARS = 3
+
     def _calculate_roi_potential(
         self, player_data: Dict, team_data: Dict, projections: Dict
     ) -> Dict:
         """Calculate potential return on investment"""
         initial_investment = player_data["market_value"]
 
-        # Consider multiple ROI factors
+        # Sporting and commercial value are FLOWS spread over the contract,
+        # while resale is a STOCK realised at the end. The previous version
+        # added all three as if they landed at once and compared that to the
+        # fee, which produced returns above 200% for ordinary players — and sat
+        # next to a projection chart showing the value falling. Breakeven, in
+        # the same class, already divided by five: the two figures were built on
+        # opposite assumptions. Both now share one horizon.
+        horizon_years = self.ROI_HORIZON_YEARS
         sporting_value = self._estimate_sporting_value(player_data, team_data)
         commercial_value = self._estimate_commercial_value(player_data)
         resale_value = projections.get("year_3", {}).get("value", initial_investment * 0.7)
 
-        total_value = sporting_value + commercial_value + resale_value
-        roi = ((total_value - initial_investment) / initial_investment) * 100
+        annual_contribution = (sporting_value + commercial_value) / 5.0
+        contribution_over_horizon = annual_contribution * horizon_years
+        total_value = contribution_over_horizon + resale_value
+        roi = (
+            ((total_value - initial_investment) / initial_investment) * 100
+            if initial_investment else 0.0
+        )
 
         return {
             "roi_percentage": roi,
