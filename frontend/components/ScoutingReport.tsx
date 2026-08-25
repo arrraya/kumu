@@ -728,6 +728,13 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
             <div className="bg-green-50 p-4 rounded-lg text-center">
               <div className="text-2xl font-bold text-green-600">{report.market_analysis.value_assessment.assessment}</div>
               <div className="text-sm text-gray-600 mt-1">Value Assessment</div>
+              {/* The verdict compares a Kumu estimate against other Kumu
+                  estimates — no observed fee is involved. Saying so is the
+                  difference between an analytical construct and a claim about
+                  the transfer market. */}
+              <div className="text-xs text-gray-500 mt-2 leading-snug">
+                Kumu estimate vs Kumu-valued peers, not observed transfer fees
+              </div>
             </div>
             <div className="bg-purple-50 p-4 rounded-lg text-center">
               <div className="text-2xl font-bold text-purple-600">{formatPercentage(report.market_analysis.roi_analysis.roi_percentage)}</div>
@@ -1045,6 +1052,15 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
                </div>
              );
            })()}
+           {/* Separates what was measured from what was assumed, so a reader
+               does not take an estimate for a reading. */}
+           <p className="text-xs text-gray-500 mt-2 max-w-2xl leading-snug">
+             Metrics come from match events. Age is not available in this source
+             and is held at 26 for everyone; market values are estimated by Kumu
+             from performance. Club playing styles and expected levels are
+             declared curation, and roles that rely on aerial duels or blocks
+             score low because the source does not record them.
+           </p>
          </div>
          <button
            onClick={handleDownloadPdf}
