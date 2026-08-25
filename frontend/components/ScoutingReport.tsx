@@ -231,7 +231,7 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
         key_findings: [
           `Player ranks in the 82nd percentile overall`,
           `Match compatibility score: ${match?.score.overall || 0}%`,
-          `Age profile: ${player?.age} years - ${player?.age && player.age < 26 ? 'Optimal' : 'Prime'}`,
+          `Age: not available in this data source`,
           `Financial fit: ${match?.score.financial && match.score.financial > 80 ? 'Within budget' : 'Requires negotiation'}`
         ],
         executive_statement: `${player?.name} represents a strongly recommended acquisition for ${match?.team.name}. Statistical analysis places the player in the 82nd percentile for their position in ${match?.team.league}.`
@@ -710,7 +710,10 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
 
   const renderMarketAnalysis = () => {
     const projectionData = Object.entries(report.market_analysis.value_projections).map(([year, data]) => ({
-      year: `Age ${data.age}`,
+      // Labelled in years from today, not ages: the source has no birth
+      // dates, so every age here descends from the assumed 26 and would
+      // contradict the note that says age is unavailable.
+      year: year.replace('year_', 'Year '),
       value: data.value / 1000000,
       change: data.change_pct
     }));
