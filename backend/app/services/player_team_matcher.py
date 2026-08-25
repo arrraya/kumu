@@ -360,8 +360,13 @@ class PlayerTeamMatcher:
                 # Room to grow, best when the club is a clear step up
                 headroom_score = min(1.0, 0.55 + gap * 0.9)
             else:
-                # Already above the club's level: little left to gain there
-                headroom_score = max(0.15, 0.55 + gap * 0.7)
+                # Already at or above the club's level: there is no upside left
+                # to measure, so this reads NEUTRAL rather than poor. Being
+                # overqualified is already penalised inside performance fit via
+                # level fit; scoring it low here too punished the same fact
+                # twice and cost the strongest players several points for
+                # having nothing left to learn.
+                headroom_score = max(0.45, 0.55 + gap * 0.15)
 
         return age_score * 0.25 + trend_score * 0.35 + headroom_score * 0.40
 
