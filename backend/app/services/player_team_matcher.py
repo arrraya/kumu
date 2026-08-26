@@ -158,7 +158,10 @@ class PlayerTeamMatcher:
 
         Returns (score, basis) so the report can say which one was used.
         """
-        team_id = getattr(team, "team_id", None)
+        # The constructor takes team_id but stores it as .id, so reading
+        # "team_id" off the instance always came back None and every lookup
+        # fell through to the curated list without the squad ever being read.
+        team_id = getattr(team, "id", None) or getattr(team, "team_id", None)
         squad = []
         if team_id:
             try:
