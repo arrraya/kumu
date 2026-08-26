@@ -167,6 +167,13 @@ class PlayerTeamMatcher:
             except Exception:  # noqa: BLE001 - fall back to the curated list
                 squad = []
 
+        # An empty result means one of two very different things, and treating
+        # them alike wasted the strongest signal available: a club with a squad
+        # on file and nobody in this position has a hole, which is maximum
+        # need — not missing data.
+        if not squad and self._squad_size(team_id):
+            return 1.0, f"no {player.position} in the squad at all"
+
         if not squad:
             needs = team.position_needs or []
             if player.position in needs:
@@ -189,6 +196,26 @@ class PlayerTeamMatcher:
             f"best index {best_incumbent:.1f} vs club level {float(expected):.0f}"
         )
         return round(min(1.0, need), 3), basis
+
+    def _squad_size(self, team_id) -> int:
+        """How many players the club has on file, regardless of position."""
+        if not team_id:
+            return 0
+        from sqlalchemy import text
+
+        from app.db.database import SessionLocal
+
+        session = SessionLocal()
+        try:
+            row = session.execute(
+                text("SELECT count(*) FROM squad_memberships WHERE team_id = :t"),
+                {"t": int(team_id)},
+            ).fetchone()
+            return int(row[0]) if row else 0
+        except Exception:  # noqa: BLE001
+            return 0
+        finally:
+            session.close()
 
     def _query_squad(self, team_id: int, position: str) -> list:
         """Indices of the club's current players in a position."""
