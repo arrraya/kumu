@@ -141,6 +141,72 @@ class PlayerTeamMatcher:
         "CB": ["CDM", "RB", "LB"], "RB": ["LB", "CB", "RM"], "LB": ["RB", "CB", "LM"],
     }
 
+    # A squad this thin at a position is a gap whoever is already there.
+    HEALTHY_DEPTH = 3
+
+    def _positional_need(self, player: Player, team: Team) -> tuple:
+        """How badly this club needs this position, read from its actual squad.
+
+        Position needs used to come only from a hand-written list of four
+        priorities per club. With twenty clubs that is eighty slots for nine
+        positions, so whether a player "fits a need" was decided by how the
+        list happened to be written — a right winger matched four clubs and
+        missed sixteen. Squad membership now answers the question directly:
+        a club needs a position when it has few players there, or when the ones
+        it has fall short of the level the club operates at. The curated list
+        stays as a fallback for clubs with no squad on file.
+
+        Returns (score, basis) so the report can say which one was used.
+        """
+        team_id = getattr(team, "team_id", None)
+        squad = []
+        if team_id:
+            try:
+                rows = self._query_squad(int(team_id), player.position)
+                squad = [float(r[0]) for r in rows if r[0] is not None]
+            except Exception:  # noqa: BLE001 - fall back to the curated list
+                squad = []
+
+        if not squad:
+            needs = team.position_needs or []
+            if player.position in needs:
+                return 1.0, "listed as a club priority"
+            if any(p in needs for p in self.ADJACENT_POSITIONS.get(player.position, [])):
+                return 0.75, "adjacent to a club priority"
+            return 0.55, "not among the club's listed priorities"
+
+        # Depth: fewer bodies at the position means more need
+        depth_need = max(0.0, min(1.0, (self.HEALTHY_DEPTH - len(squad)) / self.HEALTHY_DEPTH))
+
+        # Quality: how the incumbents compare to the club's expected level
+        expected = getattr(team, "expected_index", None) or 70.0
+        best_incumbent = max(squad)
+        quality_need = max(0.0, min(1.0, (float(expected) - best_incumbent) / 20.0))
+
+        need = 0.45 + (depth_need * 0.30) + (quality_need * 0.25)
+        basis = (
+            f"{len(squad)} {player.position}(s) in the squad, "
+            f"best index {best_incumbent:.1f} vs club level {float(expected):.0f}"
+        )
+        return round(min(1.0, need), 3), basis
+
+    def _query_squad(self, team_id: int, position: str) -> list:
+        """Indices of the club's current players in a position."""
+        from sqlalchemy import text
+
+        from app.db.database import SessionLocal
+
+        session = SessionLocal()
+        try:
+            return session.execute(text("""
+                SELECT COALESCE((p.performance_index->>'value')::float, 0)
+                FROM squad_memberships m
+                JOIN players p ON p.id = m.player_id
+                WHERE m.team_id = :team_id AND p.position = :position
+            """), {"team_id": team_id, "position": position}).fetchall()
+        finally:
+            session.close()
+
     def calculate_tactical_fit(self, player: Player, team: Team) -> float:
         """How well the player suits the team's needs and playing style.
 
@@ -148,16 +214,13 @@ class PlayerTeamMatcher:
         now compares the player's actual metrics against the club's declared
         possession / pressing profile.
         """
-        needs = team.position_needs or []
-        if player.position in needs:
-            position_match = 1.0
-        elif any(p in needs for p in self.ADJACENT_POSITIONS.get(player.position, [])):
-            position_match = 0.75          # can adapt to an adjacent role
-        else:
-            position_match = 0.4
+        position_match, self._last_need_basis = self._positional_need(player, team)
 
+        # Evened out from 60/40: the position side leans on curation (or on a
+        # squad that may be small), while the style side is measured from match
+        # events, so neither should dominate the other.
         style_score = self._calculate_style_score(player, team)
-        return position_match * 0.6 + style_score * 0.4
+        return position_match * 0.5 + style_score * 0.5
 
     # What "good" looks like per role, so style fit stops using one yardstick.
     STYLE_REFERENCE = {
