@@ -1,13 +1,64 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, JSON, ForeignKey
+from sqlalchemy import Boolean, Column, Integer, String, Float, DateTime, JSON, ForeignKey
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from .database import Base
+
+
+class Organization(Base):
+    """A tenant. Either the public reference dataset or a paying client.
+
+    The public organisation is what keeps the demo alive after login exists,
+    and it is the population every client's percentiles are measured against
+    before they have data of their own.
+    """
+
+    __tablename__ = "organizations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    slug = Column(String, unique=True, nullable=False, index=True)
+    kind = Column(String, nullable=False, default="client")  # public | client
+    # Consent for the aggregate benchmark, off unless explicitly granted.
+    allows_aggregate = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    users = relationship("User", back_populates="organization")
+
+    @property
+    def is_public(self) -> bool:
+        return self.kind == "public"
+
+
+class User(Base):
+    """A person, always belonging to an organisation.
+
+    Modelled as organisation-first on purpose: a club is several people sharing
+    one dataset, and retrofitting that onto standalone users means migrating
+    every row later.
+    """
+
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    email = Column(String, unique=True, nullable=False, index=True)
+    password_hash = Column(String, nullable=False)
+    full_name = Column(String)
+    role = Column(String, nullable=False, default="member")  # owner | member
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    organization = relationship("Organization", back_populates="users")
 
 
 class Player(Base):
     __tablename__ = "players"
 
     id = Column(Integer, primary_key=True, index=True)
+    # Owner of this row. Denormalised onto every table on purpose: the
+    # raw SQL queries in the matcher and generator bypass ORM filters,
+    # so each one must be able to scope directly.
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
     external_id = Column(String, unique=True, index=True)
     name = Column(String, index=True)
     age = Column(Integer)
@@ -32,6 +83,10 @@ class Team(Base):
     __tablename__ = "teams"
 
     id = Column(Integer, primary_key=True, index=True)
+    # Owner of this row. Denormalised onto every table on purpose: the
+    # raw SQL queries in the matcher and generator bypass ORM filters,
+    # so each one must be able to scope directly.
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
     external_id = Column(String, unique=True, index=True)
     name = Column(String, index=True)
     league = Column(String)
@@ -62,6 +117,10 @@ class SquadMembership(Base):
     __tablename__ = "squad_memberships"
 
     id = Column(Integer, primary_key=True, index=True)
+    # Owner of this row. Denormalised onto every table on purpose: the
+    # raw SQL queries in the matcher and generator bypass ORM filters,
+    # so each one must be able to scope directly.
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
     player_id = Column(Integer, ForeignKey("players.id"), index=True)
     team_id = Column(Integer, ForeignKey("teams.id"), index=True)
     source = Column(String, default="user")
@@ -75,6 +134,10 @@ class PlayerTeamMatch(Base):
     __tablename__ = "player_team_matches"
 
     id = Column(Integer, primary_key=True, index=True)
+    # Owner of this row. Denormalised onto every table on purpose: the
+    # raw SQL queries in the matcher and generator bypass ORM filters,
+    # so each one must be able to scope directly.
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
     player_id = Column(Integer, ForeignKey("players.id"))
     team_id = Column(Integer, ForeignKey("teams.id"))
     match_score = Column(Float)
@@ -90,6 +153,10 @@ class ScoutingReport(Base):
     __tablename__ = "scouting_reports"
 
     id = Column(Integer, primary_key=True, index=True)
+    # Owner of this row. Denormalised onto every table on purpose: the
+    # raw SQL queries in the matcher and generator bypass ORM filters,
+    # so each one must be able to scope directly.
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
     player_id = Column(Integer, ForeignKey("players.id"))
     team_id = Column(Integer, ForeignKey("teams.id"))
     match_id = Column(Integer, ForeignKey("player_team_matches.id"))
