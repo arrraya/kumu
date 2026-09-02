@@ -40,6 +40,17 @@ PROVIDER_POSITION_MAP = {
     "Secondary Striker": "ST",
 }
 
+# Some providers draw finer distinctions than Kumu's ten positions can carry.
+# A "Right Midfield" in a 4-4-2 is labelled RW here because there is no RM in
+# the vocabulary, but for RATING purposes he is a midfielder: he defends far
+# more than a winger in a 4-3-3. Label and rating group answer different
+# questions, so the group is looked up here first rather than derived from the
+# position map.
+PROVIDER_GROUP_OVERRIDE = {
+    "Right Midfield": "midfield",
+    "Left Midfield": "midfield",
+}
+
 MIN_MATCHES_FOR_INDEX = 3
 MIN_PEERS_FOR_SCALE = 5
 
@@ -52,6 +63,15 @@ def normalize_position(raw: Optional[str]) -> Optional[str]:
     if value.upper() in POSITION_GROUP:
         return value.upper()
     return PROVIDER_POSITION_MAP.get(value)
+
+
+def rating_group(raw_position: Optional[str]) -> str:
+    """Which yardstick a player's match should be judged by."""
+    if raw_position:
+        override = PROVIDER_GROUP_OVERRIDE.get(str(raw_position).strip())
+        if override:
+            return override
+    return POSITION_GROUP.get(normalize_position(raw_position) or "", "midfield")
 
 
 def match_rating(stats: Dict[str, Any], group: str) -> float:
@@ -85,7 +105,7 @@ def rate_history(history: List[Dict[str, Any]], position: Optional[str]) -> List
 
     Clients with their own rating keep it; the rest get Kumu's, role-aware.
     """
-    group = POSITION_GROUP.get(normalize_position(position) or "", "midfield")
+    group = rating_group(position)
     rated = []
     for entry in history:
         record = dict(entry)

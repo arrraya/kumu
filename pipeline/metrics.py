@@ -6,66 +6,24 @@ Produces, per player, the structure Kumu's data contract expects:
   performance_index (value / trend / volatility / confidence)
 """
 import os
+import sys
 import pickle
 
 import numpy as np
 import pandas as pd
 import xgboost as xgb
 
+# Scoring lives in one place only: the pipeline is one adapter among several,
+# and adapters depend on the core rather than carrying their own copy. A second
+# copy is what left market.py pricing defenders on a retired formula.
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
+from app.core.scoring import (  # noqa: E402
+    match_rating,
+    normalize_indices as _normalize_indices_shared,
+    rating_group,
+)
+
 CACHE_DIR = os.path.join(os.path.dirname(__file__), ".cache")
-
-# StatsBomb's verbose positions grouped by what a match rating should reward.
-POSITION_GROUP = {
-    "Right Center Forward": "attack", "Left Center Forward": "attack",
-    "Center Forward": "attack", "Secondary Striker": "attack",
-    "Right Wing": "attack", "Left Wing": "attack",
-    "Center Attacking Midfield": "attack",
-    "Right Attacking Midfield": "attack", "Left Attacking Midfield": "attack",
-    "Center Midfield": "midfield", "Right Center Midfield": "midfield",
-    "Left Center Midfield": "midfield",
-    "Center Defensive Midfield": "midfield",
-    "Right Defensive Midfield": "midfield", "Left Defensive Midfield": "midfield",
-    "Right Midfield": "midfield", "Left Midfield": "midfield",
-    "Right Back": "defense", "Left Back": "defense",
-    "Right Center Back": "defense", "Left Center Back": "defense",
-    "Center Back": "defense",
-    "Right Wing Back": "defense", "Left Wing Back": "defense",
-    "Goalkeeper": "defense",
-}
-
-
-def match_rating(stats: dict, group: str) -> float:
-    """Rate one match according to what the role is actually asked to do.
-
-    A single offensive formula (goals, assists, key passes, pass completion)
-    left defenders with nothing to vary on but completion rate, which barely
-    moves between centre-backs — so every centre-back in the database came out
-    with practically the same index. Uncapped on purpose: a hat-trick should
-    stand above a one-goal game rather than hitting a ceiling.
-    """
-    goals = stats.get("goals", 0)
-    assists = stats.get("assists", 0)
-    key_passes = stats.get("key_passes", 0)
-    shots = stats.get("shots", 0)
-    completion = stats.get("pass_completion", 0.0)
-    progressive = stats.get("progressive_passes", 0)
-    defensive = stats.get("tackles", 0) + stats.get("interceptions", 0)
-
-    if group == "attack":
-        return (
-            5.0 + goals * 1.5 + assists * 1.0 + key_passes * 0.3
-            + shots * 0.15 + completion * 1.5
-        )
-    if group == "midfield":
-        return (
-            5.0 + completion * 2.0 + progressive * 0.10 + key_passes * 0.4
-            + defensive * 0.20 + goals * 1.2 + assists * 0.9
-        )
-    return (
-        5.0 + completion * 2.0 + defensive * 0.25 + progressive * 0.08
-        + key_passes * 0.3 + goals * 1.2 + assists * 0.9
-    )
-
 
 def load_events() -> pd.DataFrame:
     with open(os.path.join(CACHE_DIR, "all_events.pkl"), "rb") as f:
@@ -189,7 +147,7 @@ def build_player_metrics(events: pd.DataFrame, model) -> dict:
                 "progressive_passes": m_progressive,
                 "pass_completion": round(float(completion), 3),
             }
-            entry["rating"] = round(float(match_rating(entry, POSITION_GROUP.get(position, "midfield"))), 2)
+            entry["rating"] = round(float(match_rating(entry, rating_group(position))), 2)
             history.append(entry)
 
         ratings = [h["rating"] for h in history]
@@ -240,53 +198,12 @@ def build_player_metrics(events: pd.DataFrame, model) -> dict:
 
 
 def normalize_indices(players: dict) -> dict:
-    """Put every position on the same index scale.
-
-    Role-aware ratings fixed the compression among defenders, but left the
-    scales incomparable across roles: a centre-back's rating rests on a high,
-    steady base (pass completion, constant defensive actions) while a striker
-    goes scoreless in most matches, so defenders' medians sat ~17 points above
-    forwards'. Several consumers compare across positions — the market price,
-    the club's expected_index, the dashboard's top performers — so the index is
-    rescaled within each position: 70 is the typical player for that role and
-    each 10 points is one standard deviation. Ordering inside a position is
-    untouched, and the pre-normalisation figure is kept as raw_value.
-    """
-    from collections import defaultdict
-    from benchmarks import POSITION_MAP
-
-    by_position = defaultdict(list)
+    """Adapt the pipeline's dict-of-players to the shared list-based routine."""
+    records = []
     for p in players.values():
-        pos = POSITION_MAP.get(p.get("position") or "")
-        index = (p.get("performance_index") or {}).get("value")
-        if pos and isinstance(index, (int, float)):
-            by_position[pos].append(float(index))
-
-    scales = {}
-    for pos, values in by_position.items():
-        if len(values) >= 5:
-            spread = float(np.std(values))
-            scales[pos] = (float(np.mean(values)), spread if spread > 0 else 1.0)
-
-    for p in players.values():
-        index_data = p.get("performance_index")
-        if not index_data:
-            continue
-        pos = POSITION_MAP.get(p.get("position") or "")
-        if pos not in scales:
-            continue
-        mean, spread = scales[pos]
-        z = (float(index_data["value"]) - mean) / spread
-        index_data["raw_value"] = round(float(index_data["value"]), 1)
-        # Clamping at 100 stacked every outlier on the ceiling: Messi and
-        # Mbappé both read exactly 100.0 and stopped being distinguishable.
-        # tanh compresses instead of cutting — inside roughly two standard
-        # deviations the scale is nearly linear, beyond that it eases off and
-        # approaches the bounds without ever reaching them, so ordering among
-        # extreme players survives.
-        scaled = 70.0 + 30.0 * float(np.tanh(z / 2.5))
-        index_data["value"] = round(scaled, 1)
-
+        if p.get("performance_index"):
+            records.append(p)
+    _normalize_indices_shared(records)
     return players
 
 
