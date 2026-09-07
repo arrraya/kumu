@@ -144,7 +144,7 @@ class PlayerTeamMatcher:
     # A squad this thin at a position is a gap whoever is already there.
     HEALTHY_DEPTH = 3
 
-    def _positional_need(self, player: Player, team: Team) -> tuple:
+    def _positional_need(self, player: Player, team: Team, org_ids=None) -> tuple:
         """How badly this club needs this position, read from its actual squad.
 
         Position needs used to come only from a hand-written list of four
@@ -165,7 +165,7 @@ class PlayerTeamMatcher:
         squad = []
         if team_id:
             try:
-                rows = self._query_squad(int(team_id), player.position)
+                rows = self._query_squad(int(team_id), player.position, org_ids)
                 squad = [float(r[0]) for r in rows if r[0] is not None]
             except Exception:  # noqa: BLE001 - fall back to the curated list
                 squad = []
@@ -174,7 +174,7 @@ class PlayerTeamMatcher:
         # them alike wasted the strongest signal available: a club with a squad
         # on file and nobody in this position has a hole, which is maximum
         # need — not missing data.
-        if not squad and self._squad_size(team_id):
+        if not squad and self._squad_size(team_id, org_ids):
             return 1.0, f"no {player.position} in the squad at all"
 
         if not squad:
@@ -200,51 +200,57 @@ class PlayerTeamMatcher:
         )
         return round(min(1.0, need), 3), basis
 
-    def _squad_size(self, team_id) -> int:
-        """How many players the club has on file, regardless of position."""
-        if not team_id:
+    def _squad_size(self, team_id, org_ids=None) -> int:
+        """How many players the club has on file, regardless of position.
+
+        Scoped like every other raw read: a squad count that included another
+        client's memberships would turn "this club has nobody here" into a
+        false negative, and that flag drives maximum positional need.
+        """
+        if not team_id or not org_ids:
             return 0
-        from sqlalchemy import text
-
-        from app.db.database import SessionLocal
-
-        session = SessionLocal()
         try:
-            row = session.execute(
-                text("SELECT count(*) FROM squad_memberships WHERE team_id = :t"),
+            from app.db.scoped import scoped_query
+
+            row = scoped_query(
+                "SELECT count(*) FROM squad_memberships "
+                "WHERE team_id = :t AND organization_id IN :org_ids",
                 {"t": int(team_id)},
-            ).fetchone()
-            return int(row[0]) if row else 0
+                org_ids,
+            )
+            return int(row[0][0]) if row else 0
         except Exception:  # noqa: BLE001
             return 0
-        finally:
-            session.close()
 
-    def _query_squad(self, team_id: int, position: str) -> list:
+    def _query_squad(self, team_id: int, position: str, org_ids=None) -> list:
         """Indices of the club's current players in a position."""
-        from sqlalchemy import text
-
-        from app.db.database import SessionLocal
-
-        session = SessionLocal()
+        if not org_ids:
+            return []
         try:
-            return session.execute(text("""
+            from app.db.scoped import scoped_query
+
+            return scoped_query(
+                """
                 SELECT COALESCE((p.performance_index->>'value')::float, 0)
                 FROM squad_memberships m
                 JOIN players p ON p.id = m.player_id
                 WHERE m.team_id = :team_id AND p.position = :position
-            """), {"team_id": team_id, "position": position}).fetchall()
-        finally:
-            session.close()
+                  AND m.organization_id IN :org_ids
+                """,
+                {"team_id": int(team_id), "position": position},
+                org_ids,
+            )
+        except Exception:  # noqa: BLE001
+            return []
 
-    def calculate_tactical_fit(self, player: Player, team: Team) -> float:
+    def calculate_tactical_fit(self, player: Player, team: Team, org_ids=None) -> float:
         """How well the player suits the team's needs and playing style.
 
         Replaces the previous hardcoded style placeholder: the style component
         now compares the player's actual metrics against the club's declared
         possession / pressing profile.
         """
-        position_match, self._last_need_basis = self._positional_need(player, team)
+        position_match, self._last_need_basis = self._positional_need(player, team, org_ids)
 
         # Evened out from 60/40: the position side leans on curation (or on a
         # squad that may be small), while the style side is measured from match
@@ -463,9 +469,9 @@ class PlayerTeamMatcher:
 
         return age_score * 0.25 + trend_score * 0.35 + headroom_score * 0.40
 
-    def calculate_match_score(self, player: Player, team: Team) -> Dict:
+    def calculate_match_score(self, player: Player, team: Team, org_ids=None) -> Dict:
         """Calculate overall match score between player and team"""
-        tactical = self.calculate_tactical_fit(player, team)
+        tactical = self.calculate_tactical_fit(player, team, org_ids)
         performance = self.calculate_performance_fit(player, team)
         financial = self.calculate_financial_fit(player, team)
         growth = self.calculate_growth_potential(player, team)
@@ -487,7 +493,7 @@ class PlayerTeamMatcher:
             },
         }
 
-    def calculate_fit_score(self, db, player_id, team_id) -> Dict:
+    def calculate_fit_score(self, db, player_id, team_id, org_ids=None) -> Dict:
         """Score a player against a team by id, loading both from the database.
 
         Three call sites (team_service, analytics_service x2) have always called
@@ -536,7 +542,7 @@ class PlayerTeamMatcher:
         team.performance_requirements = requirements.get("performance", {})
         team.expected_index = requirements.get("expected_index")
 
-        return self.calculate_match_score(player, team)
+        return self.calculate_match_score(player, team, org_ids)
 
     def find_matches(
         self, player: Player, teams: List[Team], min_score: float = 70.0

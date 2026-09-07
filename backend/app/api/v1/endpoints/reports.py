@@ -9,6 +9,7 @@ from app.services.scouting_report_generator import ScoutingReportGenerator
 from app.services.pdf_generator import PDFReportGenerator
 import app.services.player_service as player_service
 import app.services.team_service as team_service
+from app.core import security
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +67,9 @@ pdf_generator = PDFReportGenerator()
 
 @router.post("/generate", response_model=report_schemas.ScoutingReport)
 async def generate_report(
-    request: report_schemas.GenerateReportRequest, db: Session = Depends(get_db)
+    request: report_schemas.GenerateReportRequest,
+    db: Session = Depends(get_db),
+    org_ids: list = Depends(security.readable_org_ids),
 ):
     """Generate a scouting report"""
     # Get player and team data
@@ -89,7 +92,7 @@ async def generate_report(
     try:
         from app.services.player_team_matcher import PlayerTeamMatcher
 
-        fit = PlayerTeamMatcher().calculate_fit_score(db, player.id, team.id)
+        fit = PlayerTeamMatcher().calculate_fit_score(db, player.id, team.id, org_ids)
         if isinstance(fit.get("overall_score"), (int, float)):
             player_data["match_score"] = float(fit["overall_score"])
             player_data["match_breakdown"] = fit.get("breakdown", {})
@@ -107,7 +110,7 @@ async def generate_report(
     }
 
     # Generate report
-    report_data = report_generator.generate_full_report(player_data, team_data)
+    report_data = report_generator.generate_full_report(player_data, team_data, org_ids)
     report_data = _numpy_to_native(report_data)
 
     # Save report to database

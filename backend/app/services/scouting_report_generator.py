@@ -41,17 +41,21 @@ class ScoutingReportGenerator:
             "negotiation_strategy",
         ]
 
-    def _query_db(self, sql: str, params: dict) -> list:
-        """Run a read-only query against Kumu's database; [] on any failure."""
-        try:
-            from sqlalchemy import text
-            from app.db.database import SessionLocal
+    def _query_db(self, sql: str, params: dict, org_ids=None) -> list:
+        """Run a read-only query restricted to the caller's tenants.
 
-            session = SessionLocal()
-            try:
-                return session.execute(text(sql), params).fetchall()
-            finally:
-                session.close()
+        `org_ids` is required in practice: peers, comparables and league
+        percentiles all feed numbers the client is shown, so reading beyond
+        their scope would not merely reveal other clients' players — it would
+        compute the wrong figures. Passing nothing returns [] rather than
+        silently widening.
+        """
+        if not org_ids:
+            return []
+        try:
+            from app.db.scoped import scoped_query
+
+            return scoped_query(sql, params, org_ids)
         except Exception:
             return []
 
@@ -153,7 +157,7 @@ class ScoutingReportGenerator:
         else:
             return PerformanceCategory.BELOW_AVERAGE
 
-    def _positional_percentile(self, player_data: Dict) -> Optional[float]:
+    def _positional_percentile(self, player_data: Dict, org_ids=None) -> Optional[float]:
         """True percentile of the player's index among same-position peers."""
         position = player_data.get("position") or ""
         index = (player_data.get("performance_index") or {}).get("value")
@@ -165,15 +169,17 @@ class ScoutingReportGenerator:
             SELECT COALESCE((performance_index->>'value')::float, 0) AS v
             FROM players
             WHERE position = :position AND performance_index IS NOT NULL
+              AND organization_id IN :org_ids
             """,
             {"position": position},
+            org_ids,
         )
         values = [float(r[0]) for r in rows if r[0] is not None]
         if len(values) < 5:
             return None
         return round(sum(1 for v in values if v < float(index)) / len(values) * 100, 1)
 
-    def generate_executive_summary(self, player_data: Dict, team_data: Dict) -> Dict:
+    def generate_executive_summary(self, player_data: Dict, team_data: Dict, org_ids=None) -> Dict:
         """Generate executive summary with key findings"""
         match_score = player_data.get("match_score", 0)
 
@@ -207,7 +213,7 @@ class ScoutingReportGenerator:
         # against same-position peers for a real figure, and keep the metric
         # average as a separate, clearly named one.
         metric_percentile_average = float(np.mean(percentile_values)) if percentile_values else 50.0
-        ranked = self._positional_percentile(player_data)
+        ranked = self._positional_percentile(player_data, org_ids)
         performance_percentile = ranked if ranked is not None else metric_percentile_average
 
         return {
@@ -827,7 +833,7 @@ class ScoutingReportGenerator:
 
         return suggestions
 
-    def generate_market_analysis(self, player_data: Dict, team_data: Dict) -> Dict:
+    def generate_market_analysis(self, player_data: Dict, team_data: Dict, org_ids=None) -> Dict:
         """Generate market value and financial analysis"""
         current_value = player_data["market_value"]
         age = player_data["age"]
@@ -837,7 +843,7 @@ class ScoutingReportGenerator:
         value_projections = self._project_market_value(current_value, age, performance_index)
 
         # Compare with similar players
-        comparable_players = self._find_comparable_transfers(player_data)
+        comparable_players = self._find_comparable_transfers(player_data, org_ids)
 
         # Calculate ROI potential
         roi_analysis = self._calculate_roi_potential(player_data, team_data, value_projections)
@@ -884,7 +890,7 @@ class ScoutingReportGenerator:
 
         return projections
 
-    def _find_comparable_transfers(self, player_data: Dict) -> List[Dict]:
+    def _find_comparable_transfers(self, player_data: Dict, org_ids=None) -> List[Dict]:
         """Real positional peers from Kumu's own database (no mock data).
 
         Note: values are Kumu estimates derived from performance, so these are
@@ -900,10 +906,12 @@ class ScoutingReportGenerator:
             FROM players
             WHERE position = :position AND name <> :name
               AND performance_index IS NOT NULL AND market_value IS NOT NULL
+              AND organization_id IN :org_ids
             ORDER BY ABS(COALESCE((performance_index->>'value')::float, 0) - :idx) ASC
             LIMIT 3
             """,
             {"position": position, "name": name, "idx": float(idx)},
+            org_ids,
         )
 
         comparables = []
@@ -1175,15 +1183,15 @@ class ScoutingReportGenerator:
             ),
         }
 
-    def generate_comparison_analysis(self, player_data: Dict, team_data: Dict) -> Dict:
+    def generate_comparison_analysis(self, player_data: Dict, team_data: Dict, org_ids=None) -> Dict:
         """Generate comparison with current squad and league peers"""
         position = player_data["position"]
 
         # Compare with current squad
-        squad_comparison = self._compare_with_squad(player_data, team_data)
+        squad_comparison = self._compare_with_squad(player_data, team_data, org_ids)
 
         # Compare with league peers
-        league_comparison = self._compare_with_league_peers(player_data, team_data)
+        league_comparison = self._compare_with_league_peers(player_data, team_data, org_ids)
 
         # Historical comparison
         historical_comparison = self._historical_performance_comparison(player_data)
@@ -1197,7 +1205,7 @@ class ScoutingReportGenerator:
             ),
         }
 
-    def _compare_with_squad(self, player_data: Dict, team_data: Dict) -> Dict:
+    def _compare_with_squad(self, player_data: Dict, team_data: Dict, org_ids=None) -> Dict:
         """Compare the player against the target club's actual squad.
 
         This is the comparison that gives a signing its meaning: does he improve
@@ -1219,10 +1227,12 @@ class ScoutingReportGenerator:
                 JOIN players p ON p.id = m.player_id
                 WHERE m.team_id = :team_id AND p.position = :position
                   AND p.name <> :name AND p.performance_index IS NOT NULL
+                  AND m.organization_id IN :org_ids
                 ORDER BY COALESCE((p.performance_index->>'value')::float, 0) DESC
                 LIMIT 5
                 """,
                 {"team_id": int(team_id), "position": position, "name": name},
+                org_ids,
             )
 
         basis = f"vs {position}s already in the squad"
@@ -1238,17 +1248,20 @@ class ScoutingReportGenerator:
                     ) AS median_index
                     FROM players
                     WHERE position = :position AND performance_index IS NOT NULL
+                      AND organization_id IN :org_ids
                 )
                 SELECT p.name, p.current_team, p.performance_index
                 FROM players p, stats
                 WHERE p.position = :position AND p.name <> :name
                   AND p.performance_index IS NOT NULL
+                  AND p.organization_id IN :org_ids
                 ORDER BY ABS(
                     COALESCE((p.performance_index->>'value')::float, 0) - stats.median_index
                 ) ASC
                 LIMIT 5
                 """,
                 {"position": position, "name": name},
+                org_ids,
             )
             basis = f"vs typical {position}s in the database (no squad set for this club)"
 
@@ -1284,7 +1297,7 @@ class ScoutingReportGenerator:
             "basis": f"{basis} ({len(peers)} compared)",
         }
 
-    def _compare_with_league_peers(self, player_data: Dict, team_data: Dict) -> Dict:
+    def _compare_with_league_peers(self, player_data: Dict, team_data: Dict, org_ids=None) -> Dict:
         """Real percentile of the player's index among same-position players."""
         position = player_data.get("position") or ""
         player_idx = float((player_data.get("performance_index") or {}).get("value", 0) or 0)
@@ -1294,8 +1307,10 @@ class ScoutingReportGenerator:
             SELECT COALESCE((performance_index->>'value')::float, 0) AS v
             FROM players
             WHERE position = :position AND performance_index IS NOT NULL
+              AND organization_id IN :org_ids
             """,
             {"position": position},
+            org_ids,
         )
         values = [float(r[0]) for r in rows if r[0] is not None]
 
@@ -1829,13 +1844,18 @@ class ScoutingReportGenerator:
             or [{"rating": 7.0, "goals": 0, "assists": 0}] * 5,
         }
 
-    def generate_full_report(self, player_data: Dict, team_data: Dict) -> Dict:
+    def generate_full_report(self, player_data: Dict, team_data: Dict, org_ids=None) -> Dict:
         """Generate complete scouting report"""
 
         # Calculate match score if not provided
         if "match_score" not in player_data:
             # Simple match score calculation
             player_data["match_score"] = 75.0  # Placeholder
+
+        # Computed once and reused: the negotiation strategy needs the same
+        # market analysis the report shows, and running it twice repeated every
+        # comparables query for no benefit.
+        market_analysis = self.generate_market_analysis(player_data, team_data, org_ids)
 
         # Generate all report sections
         report = {
@@ -1846,15 +1866,15 @@ class ScoutingReportGenerator:
                 "team_name": team_data["name"],
                 "team_id": team_data["id"],
             },
-            "executive_summary": self.generate_executive_summary(player_data, team_data),
+            "executive_summary": self.generate_executive_summary(player_data, team_data, org_ids),
             "statistical_overview": self.generate_statistical_overview(player_data, team_data),
             "tactical_analysis": self.generate_tactical_analysis(player_data, team_data),
             "physical_profile": self.generate_physical_profile(player_data),
-            "market_analysis": self.generate_market_analysis(player_data, team_data),
-            "comparison_analysis": self.generate_comparison_analysis(player_data, team_data),
+            "market_analysis": market_analysis,
+            "comparison_analysis": self.generate_comparison_analysis(player_data, team_data, org_ids),
             "risk_assessment": self.generate_risk_assessment(player_data, team_data),
             "negotiation_strategy": self.generate_negotiation_strategy(
-                player_data, team_data, self.generate_market_analysis(player_data, team_data)
+                player_data, team_data, market_analysis
             ),
         }
 

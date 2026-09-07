@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.schemas import analytics as analytics_schemas
 import app.services.analytics_service as analytics_service
+from app.core import security
 
 
 router = APIRouter()
@@ -17,7 +18,9 @@ router = APIRouter()
 
 @router.post("/advanced")
 async def run_advanced_analytics(
-    request: analytics_schemas.AdvancedAnalyticsRequest, db: Session = Depends(get_db)
+    request: analytics_schemas.AdvancedAnalyticsRequest,
+    db: Session = Depends(get_db),
+    org_ids: list = Depends(security.readable_org_ids),
 ):
     """Run advanced analytics."""
     try:
@@ -27,6 +30,7 @@ async def run_advanced_analytics(
             analysis_type=request.type,
             player_ids=request.player_ids,
             parameters=request.parameters,
+            org_ids=org_ids,
         )
     except ValueError as e:
         # Explicitly raise from previous error
@@ -35,7 +39,9 @@ async def run_advanced_analytics(
 
 @router.post("/predict")
 async def predict_performance(
-    request: analytics_schemas.PredictionRequest, db: Session = Depends(get_db)
+    request: analytics_schemas.PredictionRequest,
+    db: Session = Depends(get_db),
+    org_ids: list = Depends(security.readable_org_ids),
 ):
     """Predict player performance."""
     # Inline the immediately returned variable
@@ -45,4 +51,5 @@ async def predict_performance(
         team_id=request.team_id,
         horizon=request.horizon,
         factors=request.factors,
+        org_ids=org_ids,
     )

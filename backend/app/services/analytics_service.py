@@ -46,6 +46,7 @@ def run_analysis(
     analysis_type: str,
     player_ids: List[int],
     parameters: Optional[Dict[str, Any]] = None,
+    org_ids: Optional[List[int]] = None,
 ) -> Dict[str, Any]:
     """Run advanced analytics of the requested type over the given players."""
     if parameters is None:
@@ -58,9 +59,9 @@ def run_analysis(
     if analysis_type == "performance_comparison":
         return _performance_comparison_analysis(players, parameters)
     if analysis_type == "team_fit_analysis":
-        return _team_fit_analysis(db, players, parameters)
+        return _team_fit_analysis(db, players, parameters, org_ids)
     if analysis_type == "scouting_analysis":
-        return _scouting_analysis(db, players, parameters)
+        return _scouting_analysis(db, players, parameters, org_ids)
     if analysis_type == "statistical_summary":
         return _statistical_summary_analysis(players, parameters)
     raise ValueError(f"Unsupported analysis type: {analysis_type}")
@@ -72,6 +73,7 @@ def predict_performance(
     team_id: Optional[int] = None,
     horizon: str = "next_5",
     factors: Optional[List[str]] = None,
+    org_ids: Optional[List[int]] = None,
 ) -> Dict[str, Any]:
     """Project a player's outlook from their own match history and club fit."""
     if factors is None:
@@ -97,7 +99,7 @@ def predict_performance(
     if "team_fit" in factors and team_id:
         matcher = PlayerTeamMatcher()
         predictions["predictions"]["team_fit_score"] = matcher.calculate_fit_score(
-            db, player_id, team_id
+            db, player_id, team_id, org_ids
         )
 
     if "recent_form" in factors:
@@ -132,7 +134,8 @@ def _performance_comparison_analysis(
 
 
 def _team_fit_analysis(
-    db: Session, players: List[Any], parameters: Dict[str, Any]
+    db: Session, players: List[Any], parameters: Dict[str, Any],
+    org_ids: Optional[List[int]] = None,
 ) -> Dict[str, Any]:
     """Score how well each player fits a target club."""
     target_team_id = parameters.get("target_team_id")
@@ -142,7 +145,7 @@ def _team_fit_analysis(
     matcher = PlayerTeamMatcher()
     fit_scores = []
     for player in players:
-        result = matcher.calculate_fit_score(db, player.id, target_team_id)
+        result = matcher.calculate_fit_score(db, player.id, target_team_id, org_ids)
         fit_scores.append(
             {
                 "player_id": player.id,
@@ -160,7 +163,10 @@ def _team_fit_analysis(
     }
 
 
-def _scouting_analysis(db: Session, players: List[Any], parameters: Dict[str, Any]) -> Dict[str, Any]:
+def _scouting_analysis(
+    db: Session, players: List[Any], parameters: Dict[str, Any],
+    org_ids: Optional[List[int]] = None,
+) -> Dict[str, Any]:
     """Generate full scouting reports against a target club."""
     from app.db import models  # local import keeps this module import-safe
 
@@ -191,7 +197,7 @@ def _scouting_analysis(db: Session, players: List[Any], parameters: Dict[str, An
             {
                 "player_id": player.id,
                 "player_name": player.name,
-                "scouting_report": generator.generate_full_report(player_data, team_data),
+                "scouting_report": generator.generate_full_report(player_data, team_data, org_ids),
             }
         )
 

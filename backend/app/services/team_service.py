@@ -223,6 +223,7 @@ def find_matching_players(
     min_match_score: float = 70.0,
     position_filter: Optional[str] = None,
     limit: int = 10,
+    org_ids: Optional[List[int]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Find players that match team requirements.
@@ -271,7 +272,7 @@ def find_matching_players(
     for player in players:
         # Calculate match score
         try:
-            match_result = matcher.calculate_fit_score(db, player.id, team_id)
+            match_result = matcher.calculate_fit_score(db, player.id, team_id, org_ids)
 
             if match_result.get("overall_score", 0) >= min_match_score:
                 matches.append(

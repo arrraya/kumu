@@ -11,6 +11,7 @@ from app.services.player_team_matcher import (
     Team as MatcherTeam,
 )
 import app.services.player_service as player_service
+from app.core import security
 
 router = APIRouter()
 matcher = PlayerTeamMatcher()
@@ -66,6 +67,7 @@ def _to_matcher_team(db_team) -> MatcherTeam:
 async def calculate_matches(
     request: match_schemas.MatchCalculationRequest,
     db: Session = Depends(get_db),
+    org_ids: list = Depends(security.readable_org_ids),
 ):
     """Calculate player-team compatibility using the real matching algorithm."""
     player = player_service.get_player(db, int(request.player_id))
@@ -88,7 +90,7 @@ async def calculate_matches(
     matches = []
     for team in teams:
         matcher_team = _to_matcher_team(team)
-        result = matcher.calculate_match_score(matcher_player, matcher_team)
+        result = matcher.calculate_match_score(matcher_player, matcher_team, org_ids)
         breakdown = result["breakdown"]
 
         match = match_schemas.Match(
