@@ -549,7 +549,7 @@ def update_team_budget(db: Session, team_id: int, new_budget: float, org_ids=Non
     return db_team
 
 
-def get_squad(db: Session, team_id: int) -> List[models.Player]:
+def get_squad(db: Session, team_id: int, org_ids=None) -> List[models.Player]:
     """Players belonging to a team, via the membership relation.
 
     Squad membership used to be inferred by comparing players.current_team to
@@ -564,6 +564,7 @@ def get_squad(db: Session, team_id: int) -> List[models.Player]:
             models.SquadMembership.player_id == models.Player.id,
         )
         .filter(models.SquadMembership.team_id == team_id)
+        .filter(models.SquadMembership.organization_id.in_(list(org_ids or [])))
         .all()
     )
 
@@ -613,7 +614,7 @@ def add_player_to_squad(
 
 
 def remove_player_from_squad(
-    db: Session, team_id: int, player_id: int, source: str = "user", org_id=None
+    db: Session, team_id: int, player_id: int, source: str = "user", org_id=None, org_ids=None
 ) -> bool:
     """Take a player out of a team's squad."""
     # Scoped so one tenant cannot release a player from another's squad by

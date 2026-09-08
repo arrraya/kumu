@@ -12,11 +12,15 @@ class Player(BaseModel):
     id: Optional[int] = None
     external_id: Optional[str] = None
     name: str
-    age: int
+    # Optional because the ingest contract makes them optional: a client whose
+    # feed carries no birth dates or valuations must still be able to list
+    # their own players. A default only fills an ABSENT field, so an explicit
+    # null still had to be allowed.
+    age: Optional[int] = None
     position: str  # Accepts any position string
-    nationality: str
+    nationality: Optional[str] = None
     current_team: Optional[str] = None
-    market_value: float = Field(default=10000000)
+    market_value: Optional[float] = None
     performance_index: Optional[PerformanceIndex] = None
     metrics: Dict[str, Any] = Field(default_factory=dict)
     performance_history: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
