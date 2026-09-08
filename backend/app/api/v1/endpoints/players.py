@@ -18,11 +18,12 @@ def get_players(
     max_age: Optional[int] = None,
     search: Optional[str] = None,
     db: Session = Depends(get_db),
+    org_ids: list = Depends(security.readable_org_ids),
 ):
     """Get all players with optional filters"""
     players = player_service.get_players(
-        db, skip=skip, limit=limit, position=position, min_age=min_age, max_age=max_age
-, search=search
+        db, skip=skip, limit=limit, position=position, min_age=min_age, max_age=max_age,
+        search=search, org_ids=org_ids,
     )
     return players
 
@@ -42,7 +43,8 @@ def get_player_analytics(
     player_id: int,
     period: str = Query("last_10", enum=["last_5", "last_10", "season", "all"]),
     db: Session = Depends(get_db),
+    org_ids: list = Depends(security.readable_org_ids),
 ):
     """Get player analytics data"""
-    analytics = player_service.get_player_analytics(db, player_id, period)
+    analytics = player_service.get_player_analytics(db, player_id, period, org_ids)
     return analytics

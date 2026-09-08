@@ -42,8 +42,8 @@ def get_players(
 def get_player(db: Session, player_id: int, org_ids=None) -> Optional[models.Player]:
     return get_scoped(db, models.Player, player_id, org_ids)
 
-def get_player_analytics(db: Session, player_id: int, period: str):
-    player = get_player(db, player_id)
+def get_player_analytics(db: Session, player_id: int, period: str, org_ids=None):
+    player = get_player(db, player_id, org_ids)
     if not player:
         return None
     analytics = player_analyzer.analyze_player(player, period)

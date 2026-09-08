@@ -116,9 +116,10 @@ def get_teams_needing_position(
     position: str,
     min_budget: Optional[float] = Query(None, description="Minimum budget requirement"),
     db: Session = Depends(get_db),
+    org_ids: list = Depends(security.readable_org_ids),
 ):
     """Find all teams that need a specific position"""
-    teams = team_service.get_teams_needing_position(db, position, min_budget)
+    teams = team_service.get_teams_needing_position(db, position, min_budget, org_ids)
     return {"position": position, "teams_count": len(teams), "teams": teams}
 
 
@@ -203,9 +204,10 @@ def get_team_matches(
     ),
     limit: int = Query(50, ge=1, le=200, description="Maximum number of results"),
     db: Session = Depends(get_db),
+    org_ids: list = Depends(security.readable_org_ids),
 ):
     """Get all player-team match records for a specific team"""
-    matches = team_service.get_team_matches(db, team_id, min_score, limit)
+    matches = team_service.get_team_matches(db, team_id, min_score, limit, org_ids)
     return {"team_id": team_id, "total_matches": len(matches), "matches": matches}
 
 
@@ -215,9 +217,10 @@ def get_team_scouting_reports(
     player_id: Optional[int] = Query(None, description="Filter by specific player"),
     limit: int = Query(20, ge=1, le=100, description="Maximum number of reports"),
     db: Session = Depends(get_db),
+    org_ids: list = Depends(security.readable_org_ids),
 ):
     """Get scouting reports for a team"""
-    reports = team_service.get_team_scouting_reports(db, team_id, player_id, limit)
+    reports = team_service.get_team_scouting_reports(db, team_id, player_id, limit, org_ids)
     return {"team_id": team_id, "total_reports": len(reports), "reports": reports}
 
 
@@ -245,9 +248,10 @@ def compare_teams(
 
 
 @router.get("/league/{league}")
-def get_teams_by_league(league: str, skip: int = 0, limit: int = 50, db: Session = Depends(get_db)):
+def get_teams_by_league(league: str, skip: int = 0, limit: int = 50, db: Session = Depends(get_db),
+    org_ids: list = Depends(security.readable_org_ids)):
     """Get all teams in a specific league"""
-    teams = team_service.get_teams_by_league(db, league, skip, limit)
+    teams = team_service.get_teams_by_league(db, league, skip, limit, org_ids)
     return {"league": league, "teams_count": len(teams), "teams": teams}
 
 
@@ -277,9 +281,10 @@ def update_team_budget(
 
 
 @router.get("/search/by-external-id/{external_id}", response_model=team_schemas.Team)
-def get_team_by_external_id(external_id: str, db: Session = Depends(get_db)):
+def get_team_by_external_id(external_id: str, db: Session = Depends(get_db),
+    org_ids: list = Depends(security.readable_org_ids)):
     """Get a team by its external ID"""
-    team = team_service.get_team_by_external_id(db, external_id)
+    team = team_service.get_team_by_external_id(db, external_id, org_ids)
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
     return team

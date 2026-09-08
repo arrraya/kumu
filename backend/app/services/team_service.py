@@ -76,7 +76,7 @@ def get_team(db: Session, team_id: int, org_ids=None) -> Optional[models.Team]:
     return get_scoped(db, models.Team, team_id, org_ids)
 
 
-def get_team_by_external_id(db: Session, external_id: str) -> Optional[models.Team]:
+def get_team_by_external_id(db: Session, external_id: str, org_ids=None) -> Optional[models.Team]:
     """
     Get a team by external ID.
 
@@ -87,7 +87,9 @@ def get_team_by_external_id(db: Session, external_id: str) -> Optional[models.Te
     Returns:
         Team object or None if not found
     """
-    return db.query(models.Team).filter(models.Team.external_id == external_id).first()
+    return scope(
+        db.query(models.Team).filter(models.Team.external_id == external_id),
+        models.Team, org_ids).first()
 
 
 def create_team(db: Session, team: team_schemas.TeamCreate) -> models.Team:
@@ -366,7 +368,7 @@ def get_team_analytics(
 
 
 def get_team_matches(
-    db: Session, team_id: int, min_score: Optional[float] = None, limit: int = 50
+    db: Session, team_id: int, min_score: Optional[float] = None, limit: int = 50, org_ids=None
 ) -> List[models.PlayerTeamMatch]:
     """
     Get all player-team matches for a specific team.
@@ -380,7 +382,9 @@ def get_team_matches(
     Returns:
         List of player-team match records
     """
-    query = db.query(models.PlayerTeamMatch).filter(models.PlayerTeamMatch.team_id == team_id)
+    query = scope(
+        db.query(models.PlayerTeamMatch).filter(models.PlayerTeamMatch.team_id == team_id),
+        models.PlayerTeamMatch, org_ids)
 
     if min_score is not None:
         query = query.filter(models.PlayerTeamMatch.match_score >= min_score)
@@ -389,7 +393,7 @@ def get_team_matches(
 
 
 def get_team_scouting_reports(
-    db: Session, team_id: int, player_id: Optional[int] = None, limit: int = 20
+    db: Session, team_id: int, player_id: Optional[int] = None, limit: int = 20, org_ids=None
 ) -> List[models.ScoutingReport]:
     """
     Get scouting reports for a team.
@@ -403,7 +407,9 @@ def get_team_scouting_reports(
     Returns:
         List of scouting reports
     """
-    query = db.query(models.ScoutingReport).filter(models.ScoutingReport.team_id == team_id)
+    query = scope(
+        db.query(models.ScoutingReport).filter(models.ScoutingReport.team_id == team_id),
+        models.ScoutingReport, org_ids)
 
     if player_id:
         query = query.filter(models.ScoutingReport.player_id == player_id)
@@ -457,7 +463,7 @@ def compare_teams(
 
 
 def get_teams_by_league(
-    db: Session, league: str, skip: int = 0, limit: int = 50
+    db: Session, league: str, skip: int = 0, limit: int = 50, org_ids=None
 ) -> List[models.Team]:
     """
     Get all teams in a specific league.
@@ -472,12 +478,13 @@ def get_teams_by_league(
         List of teams in the league
     """
     return (
-        db.query(models.Team).filter(models.Team.league == league).offset(skip).limit(limit).all()
+        scope(db.query(models.Team).filter(models.Team.league == league),
+              models.Team, org_ids).offset(skip).limit(limit).all()
     )
 
 
 def get_teams_needing_position(
-    db: Session, position: str, min_budget: Optional[float] = None
+    db: Session, position: str, min_budget: Optional[float] = None, org_ids=None
 ) -> List[models.Team]:
     """
     Find teams that need a specific position.
@@ -490,7 +497,7 @@ def get_teams_needing_position(
     Returns:
         List of teams needing the position
     """
-    teams = db.query(models.Team).all()
+    teams = scope(db.query(models.Team), models.Team, org_ids).all()
 
     matching_teams = []
     for team in teams:
