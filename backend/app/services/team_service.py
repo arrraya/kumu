@@ -13,6 +13,7 @@ from datetime import datetime
 from app.db import models
 from app.schemas import team as team_schemas
 from app.services.player_team_matcher import PlayerTeamMatcher
+from app.db.tenancy import get_scoped, scope
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ def get_teams(
     country: Optional[str] = None,
     min_budget: Optional[float] = None,
     max_budget: Optional[float] = None,
-    formation: Optional[str] = None,
+    formation: Optional[str] = None, org_ids=None,
 ) -> List[models.Team]:
     """
     Get teams with optional filtering.
@@ -45,7 +46,7 @@ def get_teams(
     Returns:
         List of teams matching the criteria
     """
-    query = db.query(models.Team)
+    query = scope(db.query(models.Team), models.Team, org_ids)
 
     if league:
         query = query.filter(models.Team.league == league)
@@ -61,7 +62,7 @@ def get_teams(
     return query.offset(skip).limit(limit).all()
 
 
-def get_team(db: Session, team_id: int) -> Optional[models.Team]:
+def get_team(db: Session, team_id: int, org_ids=None) -> Optional[models.Team]:
     """
     Get a single team by ID.
 
@@ -72,7 +73,7 @@ def get_team(db: Session, team_id: int) -> Optional[models.Team]:
     Returns:
         Team object or None if not found
     """
-    return db.query(models.Team).filter(models.Team.id == team_id).first()
+    return get_scoped(db, models.Team, team_id, org_ids)
 
 
 def get_team_by_external_id(db: Session, external_id: str) -> Optional[models.Team]:
@@ -119,7 +120,7 @@ def create_team(db: Session, team: team_schemas.TeamCreate) -> models.Team:
 
 
 def update_team(
-    db: Session, team_id: int, team_update: team_schemas.TeamUpdate
+    db: Session, team_id: int, team_update: team_schemas.TeamUpdate, org_ids=None
 ) -> Optional[models.Team]:
     """
     Update an existing team.
@@ -132,7 +133,7 @@ def update_team(
     Returns:
         Updated team object or None if not found
     """
-    db_team = get_team(db, team_id)
+    db_team = get_team(db, team_id, org_ids)
     if not db_team:
         return None
 
@@ -151,7 +152,7 @@ def update_team(
     return db_team
 
 
-def delete_team(db: Session, team_id: int) -> bool:
+def delete_team(db: Session, team_id: int, org_ids=None) -> bool:
     """
     Delete a team.
 
@@ -162,7 +163,7 @@ def delete_team(db: Session, team_id: int) -> bool:
     Returns:
         True if deleted, False if not found
     """
-    db_team = get_team(db, team_id)
+    db_team = get_team(db, team_id, org_ids)
     if not db_team:
         return False
 
@@ -173,7 +174,7 @@ def delete_team(db: Session, team_id: int) -> bool:
 
 
 def set_team_requirements(
-    db: Session, team_id: int, requirements: team_schemas.TeamRequirements
+    db: Session, team_id: int, requirements: team_schemas.TeamRequirements, org_ids=None
 ) -> Optional[models.Team]:
     """
     Set or update team requirements for player matching.
@@ -186,7 +187,7 @@ def set_team_requirements(
     Returns:
         Updated team object or None if not found
     """
-    db_team = get_team(db, team_id)
+    db_team = get_team(db, team_id, org_ids)
     if not db_team:
         return None
 
@@ -198,7 +199,7 @@ def set_team_requirements(
     return db_team
 
 
-def get_team_requirements(db: Session, team_id: int) -> Optional[Dict[str, Any]]:
+def get_team_requirements(db: Session, team_id: int, org_ids=None) -> Optional[Dict[str, Any]]:
     """
     Get team requirements for player matching.
 
@@ -209,7 +210,7 @@ def get_team_requirements(db: Session, team_id: int) -> Optional[Dict[str, Any]]
     Returns:
         Team requirements dictionary or None
     """
-    db_team = get_team(db, team_id)
+    db_team = get_team(db, team_id, org_ids)
     if not db_team or not db_team.requirements:
         return None
 
@@ -238,7 +239,7 @@ def find_matching_players(
     Returns:
         List of matching players with scores
     """
-    db_team = get_team(db, team_id)
+    db_team = get_team(db, team_id, org_ids)
     if not db_team:
         return []
 
@@ -299,7 +300,7 @@ def find_matching_players(
 
 
 def get_team_analytics(
-    db: Session, team_id: int, analysis_type: str = "squad_analysis"
+    db: Session, team_id: int, analysis_type: str = "squad_analysis", org_ids=None
 ) -> Optional[Dict[str, Any]]:
     """
     Get analytics for a team's current squad.
@@ -316,7 +317,7 @@ def get_team_analytics(
     # Import move inside the function to avoid circular import
     from app.services.analytics_service import run_analysis
 
-    db_team = get_team(db, team_id)
+    db_team = get_team(db, team_id, org_ids)
     if not db_team:
         return None
 
@@ -411,7 +412,7 @@ def get_team_scouting_reports(
 
 
 def compare_teams(
-    db: Session, team_ids: List[int], metrics: Optional[List[str]] = None
+    db: Session, team_ids: List[int], metrics: Optional[List[str]] = None, org_ids=None
 ) -> Dict[str, Any]:
     """
     Compare multiple teams across various metrics.
@@ -430,7 +431,7 @@ def compare_teams(
     teams_data = []
 
     for team_id in team_ids:
-        team = get_team(db, team_id)
+        team = get_team(db, team_id, org_ids)
         if team:
             team_data = {"id": team.id, "name": team.name, "metrics": {}}
 
@@ -504,7 +505,7 @@ def get_teams_needing_position(
     return matching_teams
 
 
-def update_team_budget(db: Session, team_id: int, new_budget: float) -> Optional[models.Team]:
+def update_team_budget(db: Session, team_id: int, new_budget: float, org_ids=None) -> Optional[models.Team]:
     """
     Update a team's transfer budget.
 
@@ -516,7 +517,7 @@ def update_team_budget(db: Session, team_id: int, new_budget: float) -> Optional
     Returns:
         Updated team object or None
     """
-    db_team = get_team(db, team_id)
+    db_team = get_team(db, team_id, org_ids)
     if not db_team:
         return None
 
@@ -548,7 +549,7 @@ def get_squad(db: Session, team_id: int) -> List[models.Player]:
 
 
 def add_player_to_squad(
-    db: Session, team_id: int, player_id: int, source: str = "user"
+    db: Session, team_id: int, player_id: int, source: str = "user", org_ids=None
 ) -> Optional[List[models.Player]]:
     """Put a player in a team's squad.
 
@@ -557,7 +558,7 @@ def add_player_to_squad(
     "who does this club already have" keeps meaning something. National squads
     (source='national') are left alone — they reflect the source data.
     """
-    team = get_team(db, team_id)
+    team = get_team(db, team_id, org_ids)
     player = db.query(models.Player).filter(models.Player.id == player_id).first()
     if not team or not player:
         return None
@@ -593,7 +594,7 @@ def remove_player_from_squad(
     return removed > 0
 
 
-def get_team_statistics(db: Session, team_id: int) -> Dict[str, Any]:
+def get_team_statistics(db: Session, team_id: int, org_ids=None) -> Dict[str, Any]:
     """
     Get comprehensive statistics for a team.
 
@@ -604,7 +605,7 @@ def get_team_statistics(db: Session, team_id: int) -> Dict[str, Any]:
     Returns:
         Team statistics dictionary
     """
-    db_team = get_team(db, team_id)
+    db_team = get_team(db, team_id, org_ids)
     if not db_team:
         return {}
 

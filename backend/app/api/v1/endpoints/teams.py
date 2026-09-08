@@ -4,6 +4,7 @@ from typing import List, Optional
 from app.db.database import get_db
 from app.schemas import team as team_schemas
 import app.services.team_service as team_service
+from app.core import security
 
 router = APIRouter()
 
@@ -17,10 +18,12 @@ def get_teams(
     min_budget: Optional[float] = None,
     max_budget: Optional[float] = None,
     db: Session = Depends(get_db),
+    org_ids: list = Depends(security.readable_org_ids),
 ):
     """Get all teams with optional filters"""
     teams = team_service.get_teams(
         db,
+        org_ids=org_ids,
         skip=skip,
         limit=limit,
         league=league,
@@ -32,18 +35,20 @@ def get_teams(
 
 
 @router.get("/{team_id}", response_model=team_schemas.TeamDetail)
-def get_team(team_id: int, db: Session = Depends(get_db)):
+def get_team(team_id: int, db: Session = Depends(get_db),
+    org_ids: list = Depends(security.readable_org_ids)):
     """Get detailed team information"""
-    team = team_service.get_team(db, team_id)
+    team = team_service.get_team(db, team_id, org_ids)
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
     return team
 
 
 @router.get("/{team_id}/requirements", response_model=team_schemas.TeamRequirements)
-def get_team_requirements(team_id: int, db: Session = Depends(get_db)):
+def get_team_requirements(team_id: int, db: Session = Depends(get_db),
+    org_ids: list = Depends(security.readable_org_ids)):
     """Get team requirements and needs"""
-    requirements = team_service.get_team_requirements(db, team_id)
+    requirements = team_service.get_team_requirements(db, team_id, org_ids)
     if not requirements:
         raise HTTPException(status_code=404, detail="Team not found")
     return requirements
@@ -97,9 +102,10 @@ def find_matching_players(
     position: Optional[str] = Query(None, description="Filter by specific position"),
     limit: int = Query(10, ge=1, le=100, description="Maximum number of results"),
     db: Session = Depends(get_db),
+    org_ids: list = Depends(security.readable_org_ids),
 ):
     """Find players that match team requirements"""
-    matches = team_service.find_matching_players(db, team_id, min_match_score, position, limit)
+    matches = team_service.find_matching_players(db, team_id, min_match_score, position, limit, org_ids)
     if not matches:
         return {"message": "No matching players found", "matches": []}
     return {"team_id": team_id, "matches": matches}
@@ -120,12 +126,13 @@ def get_teams_needing_position(
 
 
 @router.get("/{team_id}/squad")
-def get_squad(team_id: int, db: Session = Depends(get_db)):
+def get_squad(team_id: int, db: Session = Depends(get_db),
+    org_ids: list = Depends(security.readable_org_ids)):
     """List the players currently in a team's squad"""
-    team = team_service.get_team(db, team_id)
+    team = team_service.get_team(db, team_id, org_ids)
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
-    squad = team_service.get_squad(db, team_id)
+    squad = team_service.get_squad(db, team_id, org_ids)
     return {
         "team_id": team_id,
         "team_name": team.name,
@@ -166,18 +173,20 @@ def get_team_analytics(
     team_id: int,
     analysis_type: str = Query("squad_analysis", description="Type of analysis to perform"),
     db: Session = Depends(get_db),
+    org_ids: list = Depends(security.readable_org_ids),
 ):
     """Get analytics for team's current squad"""
-    analytics = team_service.get_team_analytics(db, team_id, analysis_type)
+    analytics = team_service.get_team_analytics(db, team_id, analysis_type, org_ids)
     if not analytics:
         raise HTTPException(status_code=404, detail="Team not found")
     return analytics
 
 
 @router.get("/{team_id}/statistics")
-def get_team_statistics(team_id: int, db: Session = Depends(get_db)):
+def get_team_statistics(team_id: int, db: Session = Depends(get_db),
+    org_ids: list = Depends(security.readable_org_ids)):
     """Get comprehensive team statistics including squad composition"""
-    stats = team_service.get_team_statistics(db, team_id)
+    stats = team_service.get_team_statistics(db, team_id, org_ids)
     if not stats:
         raise HTTPException(status_code=404, detail="Team not found")
     return stats
@@ -223,6 +232,7 @@ def compare_teams(
         description="Metrics to compare (budget, formation, league, country, playing_style, requirements)",
     ),
     db: Session = Depends(get_db),
+    org_ids: list = Depends(security.readable_org_ids),
 ):
     """Compare multiple teams across various metrics"""
     if len(team_ids) < 2:
@@ -230,7 +240,7 @@ def compare_teams(
     if len(team_ids) > 10:
         raise HTTPException(status_code=400, detail="Maximum 10 teams can be compared at once")
 
-    comparison = team_service.compare_teams(db, team_ids, metrics)
+    comparison = team_service.compare_teams(db, team_ids, metrics, org_ids)
     return comparison
 
 
@@ -280,10 +290,11 @@ def get_team_by_external_id(external_id: str, db: Session = Depends(get_db)):
 
 @router.get("/stats/summary")
 def get_all_teams_summary(
-    league: Optional[str] = None, country: Optional[str] = None, db: Session = Depends(get_db)
+    league: Optional[str] = None, country: Optional[str] = None, db: Session = Depends(get_db),
+    org_ids: list = Depends(security.readable_org_ids)
 ):
     """Get summary statistics for all teams or filtered subset"""
-    teams = team_service.get_teams(db, limit=1000, league=league, country=country)
+    teams = team_service.get_teams(db, limit=1000, league=league, country=country, org_ids=org_ids)
 
     if not teams:
         return {"message": "No teams found", "summary": {}}

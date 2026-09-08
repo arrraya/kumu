@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from app.db import models
 from app.core.ml_models import PlayerAnalyzer
+from app.db.tenancy import get_scoped, scope
 from typing import Optional, List
 
 player_analyzer = PlayerAnalyzer()
@@ -14,9 +15,10 @@ def get_players(
     min_age: Optional[int] = None,
     max_age: Optional[int] = None,
     search: Optional[str] = None,
+    org_ids: Optional[List[int]] = None,
 ) -> List[models.Player]:
     # Only query database - don't call external APIs for now
-    query = db.query(models.Player)
+    query = scope(db.query(models.Player), models.Player, org_ids)
     
     if search:
         # Case-insensitive search on multiple fields
@@ -37,8 +39,8 @@ def get_players(
     
     return query.offset(skip).limit(limit).all()
 
-def get_player(db: Session, player_id: int) -> Optional[models.Player]:
-    return db.query(models.Player).filter(models.Player.id == player_id).first()
+def get_player(db: Session, player_id: int, org_ids=None) -> Optional[models.Player]:
+    return get_scoped(db, models.Player, player_id, org_ids)
 
 def get_player_analytics(db: Session, player_id: int, period: str):
     player = get_player(db, player_id)

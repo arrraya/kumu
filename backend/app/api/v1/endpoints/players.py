@@ -4,6 +4,7 @@ from typing import List, Optional
 from app.db.database import get_db
 from app.schemas import player as player_schemas
 import app.services.player_service as player_service
+from app.core import security
 
 router = APIRouter()
 
@@ -27,9 +28,10 @@ def get_players(
 
 
 @router.get("/{player_id}", response_model=player_schemas.PlayerDetail)
-def get_player(player_id: int, db: Session = Depends(get_db)):
+def get_player(player_id: int, db: Session = Depends(get_db),
+    org_ids: list = Depends(security.readable_org_ids)):
     """Get detailed player information"""
-    player = player_service.get_player(db, player_id)
+    player = player_service.get_player(db, player_id, org_ids)
     if not player:
         raise HTTPException(status_code=404, detail="Player not found")
     return player

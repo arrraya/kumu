@@ -70,7 +70,7 @@ async def calculate_matches(
     org_ids: list = Depends(security.readable_org_ids),
 ):
     """Calculate player-team compatibility using the real matching algorithm."""
-    player = player_service.get_player(db, int(request.player_id))
+    player = player_service.get_player(db, int(request.player_id), org_ids)
     if not player:
         raise HTTPException(status_code=404, detail="Player not found")
 
