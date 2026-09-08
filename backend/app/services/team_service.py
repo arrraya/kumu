@@ -13,7 +13,7 @@ from datetime import datetime
 from app.db import models
 from app.schemas import team as team_schemas
 from app.services.player_team_matcher import PlayerTeamMatcher
-from app.db.tenancy import get_scoped, scope
+from app.db.tenancy import get_scoped, owned_by, scope
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +92,7 @@ def get_team_by_external_id(db: Session, external_id: str, org_ids=None) -> Opti
         models.Team, org_ids).first()
 
 
-def create_team(db: Session, team: team_schemas.TeamCreate) -> models.Team:
+def create_team(db: Session, team: team_schemas.TeamCreate, org_id=None) -> models.Team:
     """
     Create a new team.
 
@@ -111,6 +111,7 @@ def create_team(db: Session, team: team_schemas.TeamCreate) -> models.Team:
         budget=team.budget,
         formation=team.formation,
         playing_style=team.playing_style.dict() if team.playing_style else {},
+        organization_id=org_id,
         created_at=datetime.utcnow(),
     )
 
@@ -122,7 +123,7 @@ def create_team(db: Session, team: team_schemas.TeamCreate) -> models.Team:
 
 
 def update_team(
-    db: Session, team_id: int, team_update: team_schemas.TeamUpdate, org_ids=None
+    db: Session, team_id: int, team_update: team_schemas.TeamUpdate, org_ids=None, org_id=None
 ) -> Optional[models.Team]:
     """
     Update an existing team.
@@ -136,6 +137,9 @@ def update_team(
         Updated team object or None if not found
     """
     db_team = get_team(db, team_id, org_ids)
+    # Only the owning organisation may modify this club.
+    if not owned_by(db_team, org_id):
+        return None
     if not db_team:
         return None
 
@@ -154,7 +158,7 @@ def update_team(
     return db_team
 
 
-def delete_team(db: Session, team_id: int, org_ids=None) -> bool:
+def delete_team(db: Session, team_id: int, org_ids=None, org_id=None) -> bool:
     """
     Delete a team.
 
@@ -166,6 +170,9 @@ def delete_team(db: Session, team_id: int, org_ids=None) -> bool:
         True if deleted, False if not found
     """
     db_team = get_team(db, team_id, org_ids)
+    # Only the owning organisation may modify this club.
+    if not owned_by(db_team, org_id):
+        return False
     if not db_team:
         return False
 
@@ -176,7 +183,7 @@ def delete_team(db: Session, team_id: int, org_ids=None) -> bool:
 
 
 def set_team_requirements(
-    db: Session, team_id: int, requirements: team_schemas.TeamRequirements, org_ids=None
+    db: Session, team_id: int, requirements: team_schemas.TeamRequirements, org_ids=None, org_id=None
 ) -> Optional[models.Team]:
     """
     Set or update team requirements for player matching.
@@ -190,6 +197,9 @@ def set_team_requirements(
         Updated team object or None if not found
     """
     db_team = get_team(db, team_id, org_ids)
+    # Only the owning organisation may modify this club.
+    if not owned_by(db_team, org_id):
+        return None
     if not db_team:
         return None
 
@@ -512,7 +522,7 @@ def get_teams_needing_position(
     return matching_teams
 
 
-def update_team_budget(db: Session, team_id: int, new_budget: float, org_ids=None) -> Optional[models.Team]:
+def update_team_budget(db: Session, team_id: int, new_budget: float, org_ids=None, org_id=None) -> Optional[models.Team]:
     """
     Update a team's transfer budget.
 
@@ -525,6 +535,9 @@ def update_team_budget(db: Session, team_id: int, new_budget: float, org_ids=Non
         Updated team object or None
     """
     db_team = get_team(db, team_id, org_ids)
+    # Only the owning organisation may modify this club.
+    if not owned_by(db_team, org_id):
+        return None
     if not db_team:
         return None
 
@@ -556,7 +569,7 @@ def get_squad(db: Session, team_id: int) -> List[models.Player]:
 
 
 def add_player_to_squad(
-    db: Session, team_id: int, player_id: int, source: str = "user", org_ids=None
+    db: Session, team_id: int, player_id: int, source: str = "user", org_ids=None, org_id=None
 ) -> Optional[List[models.Player]]:
     """Put a player in a team's squad.
 
@@ -565,15 +578,24 @@ def add_player_to_squad(
     "who does this club already have" keeps meaning something. National squads
     (source='national') are left alone — they reflect the source data.
     """
+    # The club must belong to the caller: the public reference clubs are shared,
+    # so a squad built on top of one would alter what every other tenant sees.
     team = get_team(db, team_id, org_ids)
-    player = db.query(models.Player).filter(models.Player.id == player_id).first()
-    if not team or not player:
+    if not owned_by(team, org_id):
+        return None
+    # The player may come from the public pool — that is the point of a shared
+    # reference population — so he is read with the wider read scope.
+    player = get_scoped(db, models.Player, player_id, org_ids)
+    if not player:
         return None
 
     if source == "user":
+        # Scoped: moving a player out of "any other squad" must never reach
+        # into another tenant's squads.
         db.query(models.SquadMembership).filter(
             models.SquadMembership.player_id == player_id,
             models.SquadMembership.source == "user",
+            models.SquadMembership.organization_id == org_id,
         ).delete(synchronize_session=False)
 
     already_there = (
@@ -582,19 +604,24 @@ def add_player_to_squad(
         .first()
     )
     if not already_there:
-        db.add(models.SquadMembership(player_id=player_id, team_id=team_id, source=source))
+        db.add(models.SquadMembership(
+            player_id=player_id, team_id=team_id, source=source, organization_id=org_id
+        ))
 
     db.commit()
-    return get_squad(db, team_id)
+    return get_squad(db, team_id, org_ids)
 
 
 def remove_player_from_squad(
-    db: Session, team_id: int, player_id: int, source: str = "user"
+    db: Session, team_id: int, player_id: int, source: str = "user", org_id=None
 ) -> bool:
     """Take a player out of a team's squad."""
+    # Scoped so one tenant cannot release a player from another's squad by
+    # guessing the ids.
     removed = (
         db.query(models.SquadMembership)
-        .filter_by(player_id=player_id, team_id=team_id, source=source)
+        .filter_by(player_id=player_id, team_id=team_id, source=source,
+                   organization_id=org_id)
         .delete(synchronize_session=False)
     )
     db.commit()

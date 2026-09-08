@@ -41,3 +41,16 @@ def get_scoped(db, model: Any, row_id: Any, org_ids: Optional[Sequence[int]]):
         .filter(model.id == row_id, model.organization_id.in_(list(org_ids)))
         .first()
     )
+
+
+def owned_by(row: Any, org_id: Optional[int]) -> bool:
+    """Whether this row may be modified by that organisation.
+
+    Reading and writing are not symmetrical. A client reads its own rows AND
+    the public reference set, but may only ever write its own: the public data
+    is shared by every tenant, so letting one client edit it would break the
+    baseline everyone else measures against.
+    """
+    if row is None or not org_id:
+        return False
+    return getattr(row, "organization_id", None) == org_id

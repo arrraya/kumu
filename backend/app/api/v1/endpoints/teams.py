@@ -55,24 +55,30 @@ def get_team_requirements(team_id: int, db: Session = Depends(get_db),
 
 
 @router.post("/", response_model=team_schemas.Team)
-def create_team(team: team_schemas.TeamCreate, db: Session = Depends(get_db)):
+def create_team(team: team_schemas.TeamCreate, db: Session = Depends(get_db),
+    org_ids: list = Depends(security.readable_org_ids),
+    org_id: int = Depends(security.writable_org_id)):
     """Create a new team"""
-    return team_service.create_team(db, team)
+    return team_service.create_team(db, team, org_id)
 
 
 @router.put("/{team_id}", response_model=team_schemas.Team)
-def update_team(team_id: int, team_update: team_schemas.TeamUpdate, db: Session = Depends(get_db)):
+def update_team(team_id: int, team_update: team_schemas.TeamUpdate, db: Session = Depends(get_db),
+    org_ids: list = Depends(security.readable_org_ids),
+    org_id: int = Depends(security.writable_org_id)):
     """Update team information"""
-    team = team_service.update_team(db, team_id, team_update)
+    team = team_service.update_team(db, team_id, team_update, org_ids=org_ids, org_id=org_id)
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
     return team
 
 
 @router.delete("/{team_id}")
-def delete_team(team_id: int, db: Session = Depends(get_db)):
+def delete_team(team_id: int, db: Session = Depends(get_db),
+    org_ids: list = Depends(security.readable_org_ids),
+    org_id: int = Depends(security.writable_org_id)):
     """Delete a team"""
-    success = team_service.delete_team(db, team_id)
+    success = team_service.delete_team(db, team_id, org_ids=org_ids, org_id=org_id)
     if not success:
         raise HTTPException(status_code=404, detail="Team not found")
     return {"message": "Team deleted successfully"}
@@ -83,10 +89,12 @@ def delete_team(team_id: int, db: Session = Depends(get_db)):
 
 @router.post("/{team_id}/requirements", response_model=team_schemas.Team)
 def set_team_requirements(
-    team_id: int, requirements: team_schemas.TeamRequirements, db: Session = Depends(get_db)
+    team_id: int, requirements: team_schemas.TeamRequirements, db: Session = Depends(get_db),
+    org_ids: list = Depends(security.readable_org_ids),
+    org_id: int = Depends(security.writable_org_id)
 ):
     """Set or update team requirements for player matching"""
-    team = team_service.set_team_requirements(db, team_id, requirements)
+    team = team_service.set_team_requirements(db, team_id, requirements, org_ids=org_ids, org_id=org_id)
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
     return team
@@ -153,18 +161,22 @@ def get_squad(team_id: int, db: Session = Depends(get_db),
 
 
 @router.post("/{team_id}/squad/{player_id}")
-def add_to_squad(team_id: int, player_id: int, db: Session = Depends(get_db)):
+def add_to_squad(team_id: int, player_id: int, db: Session = Depends(get_db),
+    org_ids: list = Depends(security.readable_org_ids),
+    org_id: int = Depends(security.writable_org_id)):
     """Sign a player into a club's squad"""
-    squad = team_service.add_player_to_squad(db, team_id, player_id)
+    squad = team_service.add_player_to_squad(db, team_id, player_id, org_ids=org_ids, org_id=org_id)
     if squad is None:
         raise HTTPException(status_code=404, detail="Team or player not found")
     return {"team_id": team_id, "squad_size": len(squad), "signed": player_id}
 
 
 @router.delete("/{team_id}/squad/{player_id}")
-def remove_from_squad(team_id: int, player_id: int, db: Session = Depends(get_db)):
+def remove_from_squad(team_id: int, player_id: int, db: Session = Depends(get_db),
+    org_ids: list = Depends(security.readable_org_ids),
+    org_id: int = Depends(security.writable_org_id)):
     """Release a player from a club's squad"""
-    if not team_service.remove_player_from_squad(db, team_id, player_id):
+    if not team_service.remove_player_from_squad(db, team_id, player_id, org_ids=org_ids, org_id=org_id):
         raise HTTPException(status_code=404, detail="Player not in this squad")
     return {"team_id": team_id, "released": player_id}
 
@@ -263,9 +275,11 @@ def update_team_budget(
     team_id: int,
     new_budget: float = Query(..., ge=0, description="New budget amount"),
     db: Session = Depends(get_db),
+    org_ids: list = Depends(security.readable_org_ids),
+    org_id: int = Depends(security.writable_org_id),
 ):
     """Update a team's transfer budget"""
-    team = team_service.update_team_budget(db, team_id, new_budget)
+    team = team_service.update_team_budget(db, team_id, new_budget, org_ids=org_ids, org_id=org_id)
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
     return {
