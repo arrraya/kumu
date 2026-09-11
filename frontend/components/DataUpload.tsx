@@ -14,12 +14,21 @@ import { apiService, session } from '@/lib/api'
  * the data changes hands.
  */
 
+const CAPABILITY_LABELS: Record<string, string> = {
+  comparison: 'Player comparison',
+  form_and_market: 'Form and market pricing',
+  squad_fit: 'Fit against your squad',
+  style_fit: 'Style fit',
+  physical_profile: 'Physical profile',
+  observed_valuation: 'Observed valuation',
+}
+
 const EJEMPLO = {
   source: 'mi-proveedor',
   club: {
     external_id: 'mi-club',
-    name: 'Nombre del club',
-    league: 'Liga',
+    name: 'Your club',
+    league: 'League',
     budget: 8000000,
     possession: 0.53,
     pressing_intensity: 0.6,
@@ -28,7 +37,7 @@ const EJEMPLO = {
   players: [
     {
       external_id: 'jugador-1',
-      name: 'Nombre del jugador',
+      name: 'Player name',
       position: 'ST',
       metrics: { shooting: { goals_per_90: 0.5, shots_per_90: 2.4 } },
       performance_history: [
@@ -69,7 +78,7 @@ const DataUpload: React.FC = () => {
       setSignedIn(true)
       setPassword('')
     } catch {
-      setError('No pudimos iniciar sesión con esos datos.')
+      setError('We could not sign you in with those details.')
     } finally {
       setBusy(false)
     }
@@ -94,7 +103,7 @@ const DataUpload: React.FC = () => {
       setError(
         Array.isArray(detail)
           ? detail.map((d: any) => `${d.loc?.join('.')}: ${d.msg}`).join(' · ')
-          : 'El archivo no cumple el contrato de datos.'
+          : 'The file does not meet the data contract.'
       )
     } finally {
       setBusy(false)
@@ -108,8 +117,8 @@ const DataUpload: React.FC = () => {
       setResult(await apiService.ingest.upload(parsed))
     } catch (e: any) {
       setError(e?.response?.status === 401
-        ? 'La sesión expiró. Volvé a entrar.'
-        : 'No pudimos cargar los datos.')
+        ? 'Your session expired. Sign in again.'
+        : 'We could not load the data.')
       if (e?.response?.status === 401) setSignedIn(false)
     } finally {
       setBusy(false)
@@ -127,16 +136,16 @@ const DataUpload: React.FC = () => {
       <div className="bg-white rounded-lg shadow p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">Cargar tus datos</h2>
+            <h2 className="text-2xl font-bold text-gray-900">Your data</h2>
             <p className="text-sm text-gray-600 mt-1 max-w-2xl">
-              Kumü mide a tus jugadores contra la población de referencia, así que
-              un plantel chico obtiene índices comparables con los de cualquier otro club.
+              Kumü measures your players against the reference population, so a small
+              squad still gets indices comparable to any other club's.
             </p>
           </div>
           {signedIn ? (
             <button onClick={logout}
               className="shrink-0 px-3 py-2 text-sm text-gray-700 border rounded-lg hover:bg-gray-50 flex items-center gap-2">
-              <LogOut className="w-4 h-4" /> Salir{org ? ` · ${org}` : ''}
+              <LogOut className="w-4 h-4" /> Sign out{org ? ` · ${org}` : ''}
             </button>
           ) : null}
         </div>
@@ -144,20 +153,20 @@ const DataUpload: React.FC = () => {
 
       {!signedIn && (
         <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="font-medium text-gray-900 mb-1">Entrar</h3>
+          <h3 className="font-medium text-gray-900 mb-1">Sign in</h3>
           <p className="text-sm text-gray-600 mb-4">
-            Podés validar un archivo sin cuenta. Para guardarlo hace falta entrar.
+            You can check a file without an account. Saving it needs a sign-in.
           </p>
           <div className="flex flex-wrap gap-3">
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-              placeholder="correo" autoComplete="username"
+              placeholder="email" autoComplete="username"
               className="flex-1 min-w-[200px] px-3 py-2 border rounded-lg text-sm" />
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-              placeholder="contraseña" autoComplete="current-password"
+              placeholder="password" autoComplete="current-password"
               className="flex-1 min-w-[200px] px-3 py-2 border rounded-lg text-sm" />
             <button onClick={login} disabled={busy || !email || !password}
               className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50 flex items-center gap-2">
-              <LogIn className="w-4 h-4" /> Entrar
+              <LogIn className="w-4 h-4" /> Sign in
             </button>
           </div>
         </div>
@@ -165,35 +174,35 @@ const DataUpload: React.FC = () => {
 
       <div className="bg-white rounded-lg shadow p-6">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="font-medium text-gray-900">Tu archivo</h3>
+          <h3 className="font-medium text-gray-900">Your file</h3>
           <div className="flex items-center gap-3">
             <button onClick={() => setRaw(JSON.stringify(EJEMPLO, null, 2))}
               className="text-sm text-green-700 hover:underline">
-              Ver un ejemplo
+              See an example
             </button>
             <label className="text-sm text-green-700 hover:underline cursor-pointer">
-              Subir archivo
+              Upload a file
               <input type="file" accept=".json,application/json" className="hidden"
                 onChange={(e) => e.target.files?.[0] && readFile(e.target.files[0])} />
             </label>
           </div>
         </div>
         <textarea value={raw} onChange={(e) => setRaw(e.target.value)} rows={12}
-          spellCheck={false} placeholder="Pegá acá el JSON con tus jugadores y tu club"
+          spellCheck={false} placeholder="Paste the JSON with your players and your club"
           className="w-full px-3 py-2 border rounded-lg font-mono text-xs" />
         {parsed === undefined && raw.trim() && (
           <p className="text-sm text-amber-700 mt-2 flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4" /> El texto no es JSON válido.
+            <AlertTriangle className="w-4 h-4" /> That text is not valid JSON.
           </p>
         )}
         <div className="flex gap-3 mt-4">
           <button onClick={validate} disabled={busy || !parsed}
             className="px-4 py-2 border border-green-600 text-green-700 rounded-lg text-sm hover:bg-green-50 disabled:opacity-50">
-            Revisar
+            Check
           </button>
           <button onClick={upload} disabled={busy || !parsed || !report || !signedIn}
             className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50 flex items-center gap-2">
-            <Upload className="w-4 h-4" /> Guardar en Kumü
+            <Upload className="w-4 h-4" /> Save to Kumü
           </button>
         </div>
         {error && (
@@ -205,9 +214,9 @@ const DataUpload: React.FC = () => {
 
       {report && (
         <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="font-medium text-gray-900 mb-1">Qué habilita este archivo</h3>
+          <h3 className="font-medium text-gray-900 mb-1">What this file unlocks</h3>
           <p className="text-sm text-gray-600 mb-4">
-            {report.players_received} jugadores{report.club ? ` · ${report.club}` : ''}
+            {report.players_received} {report.players_received === 1 ? 'player' : 'players'}{report.club ? ` · ${report.club}` : ''}
           </p>
           <div className="grid gap-2 sm:grid-cols-2">
             {Object.entries(report.capabilities || {}).map(([key, cap]: any) => (
@@ -216,7 +225,7 @@ const DataUpload: React.FC = () => {
                   ? <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
                   : <XCircle className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />}
                 <div className="min-w-0">
-                  <div className="text-sm font-medium text-gray-800">{key.replace(/_/g, ' ')}</div>
+                  <div className="text-sm font-medium text-gray-800">{CAPABILITY_LABELS[key] ?? key.replace(/_/g, ' ')}</div>
                   <div className="text-xs text-gray-600">{cap.requires}</div>
                 </div>
               </div>
@@ -233,7 +242,7 @@ const DataUpload: React.FC = () => {
           )}
           {!signedIn && (
             <p className="text-sm text-gray-600 mt-4">
-              Para guardarlo, entrá con tu cuenta arriba.
+              Sign in above to save it.
             </p>
           )}
         </div>
@@ -241,18 +250,18 @@ const DataUpload: React.FC = () => {
 
       {result && (
         <div className="bg-white rounded-lg shadow p-6 border-l-4 border-green-600">
-          <h3 className="font-medium text-gray-900 mb-2">Cargado</h3>
+          <h3 className="font-medium text-gray-900 mb-2">Loaded</h3>
           <p className="text-sm text-gray-700">
-            {result.result.players_written} jugadores guardados
+            {result.result.players_written} players saved
             {result.result.club
-              ? ` · ${result.result.club.name} con ${result.result.club.squad_size} en plantel`
+              ? ` · ${result.result.club.name} with ${result.result.club.squad_size} in the squad`
               : ''}
           </p>
           {result.result.positions_without_reference?.length > 0 && (
             <p className="text-sm text-amber-700 mt-2">
-              Sin referencia suficiente para escalar estas posiciones:{' '}
-              {result.result.positions_without_reference.join(', ')}. Sus índices quedan
-              en escala cruda y así se declaran.
+              Not enough reference data to scale these positions:{' '}
+              {result.result.positions_without_reference.join(', ')}. Their indices stay on the raw
+              scale and are reported as such.
             </p>
           )}
         </div>

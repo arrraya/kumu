@@ -14,7 +14,7 @@ export default function Navigation({ activeView, setActiveView }: NavigationProp
     { id: 'analytics', name: 'Analytics', icon: BarChart3 },
     { id: 'market', name: 'Market', icon: TrendingUp },
     { id: 'squads', name: 'Squads', icon: Shield },
-    { id: 'upload', name: 'Mis Datos', icon: Upload }
+    { id: 'upload', name: 'Your Data', icon: Upload }
   ]
 
   return (
