@@ -24,16 +24,71 @@ function normalizePlayer(p: any): any {
   };
 }
 
+// Session token. Kept in one place so every call carries it without each
+// component having to know about auth at all. Anonymous visitors simply have
+// none, and the backend answers them with the public reference data.
+const TOKEN_KEY = 'kumu_token';
+
+export const session = {
+  get: (): string | null =>
+    typeof window === 'undefined' ? null : window.localStorage.getItem(TOKEN_KEY),
+  set: (token: string) => window.localStorage.setItem(TOKEN_KEY, token),
+  clear: () => window.localStorage.removeItem(TOKEN_KEY),
+};
+
+api.interceptors.request.use((config) => {
+  const token = session.get();
+  if (token) {
+    config.headers = config.headers || {};
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 // Interceptor to handle errors
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    // An expired or invalid token should not leave the app in a half-logged-in
+    // state where every call fails: drop it and fall back to anonymous, which
+    // still shows the public data.
+    if (error?.response?.status === 401 && session.get()) {
+      session.clear();
+    }
     console.error('API Error:', error);
     return Promise.reject(error);
   }
 );
 
 export const apiService = {
+  auth: {
+    login: async (email: string, password: string) => {
+      const response = await api.post('/api/v1/auth/login', { email, password });
+      session.set(response.data.access_token);
+      return response.data;
+    },
+    signup: async (payload: {
+      organization_name: string;
+      email: string;
+      password: string;
+      full_name?: string;
+      allows_aggregate?: boolean;
+    }) => {
+      const response = await api.post('/api/v1/auth/signup', payload);
+      session.set(response.data.access_token);
+      return response.data;
+    },
+    me: async () => (await api.get('/api/v1/auth/me')).data,
+    logout: () => session.clear(),
+  },
+  ingest: {
+    // Validation needs no account on purpose: judging whether your data is
+    // usable should not require signing up first.
+    validate: async (payload: any) =>
+      (await api.post('/api/v1/ingest/validate', payload)).data,
+    upload: async (payload: any) =>
+      (await api.post('/api/v1/ingest/players', payload)).data,
+  },
   players: {
     getAll: async (filters?: any): Promise<Player[]> => {
       const response = await api.get('/api/v1/players', { params: filters });
