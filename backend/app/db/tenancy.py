@@ -16,6 +16,15 @@ from typing import Any, Optional, Sequence
 from sqlalchemy.orm import Query
 
 
+class MissingScopeError(RuntimeError):
+    """Raised when a query would run without knowing whose data it may read.
+
+    This used to return nothing instead of raising, which was safe but silent:
+    a forgotten scope looked exactly like a client with no data. Empty results
+    are indistinguishable from a bug, so the bug now announces itself.
+    """
+
+
 def scope(query: Query, model: Any, org_ids: Optional[Sequence[int]]) -> Query:
     """Restrict a listing to the given tenants.
 
@@ -23,7 +32,10 @@ def scope(query: Query, model: Any, org_ids: Optional[Sequence[int]]) -> Query:
     to resolve its scope has a bug, and the safe reading of a bug is silence.
     """
     if not org_ids:
-        return query.filter(False)
+        raise MissingScopeError(
+            f"A {model.__name__} listing was built without a tenant scope. "
+            "Pass org_ids from the endpoint rather than relaxing this check."
+        )
     return query.filter(model.organization_id.in_(list(org_ids)))
 
 
@@ -34,7 +46,11 @@ def get_scoped(db, model: Any, row_id: Any, org_ids: Optional[Sequence[int]]):
     "not found" handling covers it — a client should not be able to tell
     another tenant's ids apart from ids that do not exist.
     """
-    if row_id is None or not org_ids:
+    if not org_ids:
+        raise MissingScopeError(
+            f"A {model.__name__} was fetched by id without a tenant scope."
+        )
+    if row_id is None:
         return None
     return (
         db.query(model)

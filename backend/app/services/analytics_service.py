@@ -52,7 +52,7 @@ def run_analysis(
     if parameters is None:
         parameters = {}
 
-    players = [p for p in (player_service.get_player(db, pid) for pid in player_ids) if p]
+    players = [p for p in (player_service.get_player(db, pid, org_ids) for pid in player_ids) if p]
     if not players:
         raise ValueError("No valid players found for analysis")
 
@@ -79,7 +79,7 @@ def predict_performance(
     if factors is None:
         factors = ["historical_performance", "team_fit", "recent_form"]
 
-    player = player_service.get_player(db, int(player_id))
+    player = player_service.get_player(db, int(player_id), org_ids)
     if not player:
         raise ValueError("Player not found")
 
