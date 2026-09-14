@@ -51,7 +51,7 @@ const PlayerPicker: React.FC<{
             <div>
               <div className="text-lg font-bold text-gray-900">{value.name}</div>
               <div className="text-sm text-gray-600">
-                {value.position} • {value.nationality} • €{((value.marketValue || 0) / 1e6).toFixed(1)}M
+                {value.position} • {value.nationality} • {typeof value.marketValue === 'number' ? `€${(value.marketValue / 1e6).toFixed(1)}M` : 'value n/a'}
               </div>
               <div className="text-sm text-gray-500 mt-1">
                 Index: {value.performanceIndex?.value?.toFixed(1) ?? 'n/a'}

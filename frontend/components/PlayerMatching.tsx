@@ -196,7 +196,9 @@ const PlayerMatching: React.FC<PlayerMatchingProps> = ({
                       </span>
                     </div>
                     <div className="text-gray-600">
-                      €{(selectedPlayer.marketValue / 1000000).toFixed(1)}M
+                      {typeof selectedPlayer.marketValue === 'number'
+                        ? `€${(selectedPlayer.marketValue / 1000000).toFixed(1)}M`
+                        : '—'}
                       <span className="text-gray-400 text-sm" title="Kumu-estimated value derived from the performance index">
                         {' '}(estimated)
                       </span>

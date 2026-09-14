@@ -74,7 +74,7 @@ interface ScoutingReportData {
       intensity: { score: number; rating: string };
     };
     physical_age_analysis: {
-      current_age: number;
+      current_age: number | null;
       development_stage: string;
       peak_years_remaining: number;
     };
@@ -86,7 +86,7 @@ interface ScoutingReportData {
     };
   };
   market_analysis: {
-    current_market_value: number;
+    current_market_value: number | null;
     value_assessment: {
       assessment: string;
       recommendation: string;
@@ -279,7 +279,9 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
           intensity: { score: 85, rating: "Elite" }
         },
         physical_age_analysis: {
-          current_age: player?.age || 23,
+          // Null rather than a made-up age: the report declares what it
+          // does not know instead of filling the gap with a plausible number.
+          current_age: player?.age ?? null,
           development_stage: "Still developing physically",
           peak_years_remaining: 5
         },
@@ -291,7 +293,7 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
         }
       },
       market_analysis: {
-        current_market_value: player?.marketValue || 25000000,
+        current_market_value: player?.marketValue ?? null,
         value_assessment: {
           assessment: "Fair value",
           recommendation: "Market-appropriate pricing",
@@ -366,7 +368,10 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
     setLoading(false);
   };
 
-  const formatCurrency = (value: number) => `€${(value / 1000000).toFixed(1)}M`;
+  // Tolerates absence: a client whose feed carries no valuations should see a
+  // dash, not "€NaNM".
+  const formatCurrency = (value: number | null | undefined) =>
+    typeof value === 'number' ? `€${(value / 1000000).toFixed(1)}M` : '—';
   const formatPercentage = (value: number) => `${value.toFixed(1)}%`;
 
   const sections = [
@@ -673,7 +678,7 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
               <h4 className="font-medium text-gray-700 mb-4">Age & Development</h4>
               <div className="bg-blue-50 p-6 rounded-lg">
                 <div className="text-center">
-                  <div className="text-3xl font-bold text-blue-600">{report.physical_profile.physical_age_analysis.current_age}</div>
+                  <div className="text-3xl font-bold text-blue-600">{report.physical_profile.physical_age_analysis.current_age ?? "n/a"}</div>
                   <div className="text-sm text-gray-600 mt-1">years old</div>
                 </div>
                 <div className="mt-4 text-center">

@@ -143,7 +143,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveView }) => {
                   <div>
                     <p className="font-medium">{p.name}</p>
                     <p className="text-sm text-gray-600">
-                      {p.position} • {p.currentTeam} • €{((p.marketValue || 0) / 1_000_000).toFixed(1)}M
+                      {p.position} • {p.currentTeam} • {typeof p.marketValue === 'number' ? `€${(p.marketValue / 1_000_000).toFixed(1)}M` : 'value n/a'}
                     </p>
                   </div>
                 </div>

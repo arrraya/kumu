@@ -41,6 +41,33 @@ class ScoutingReportGenerator:
             "negotiation_strategy",
         ]
 
+    # Age is optional in the ingest contract: plenty of feeds carry no birth
+    # dates. Every downstream use compares it numerically, and None < 25 raises
+    # in Python 3, so the whole report would 500 for a client without ages.
+    # Reading it through one accessor keeps the fallback in a single place and
+    # marks it as an assumption rather than a fact.
+    ASSUMED_AGE = 26
+
+    def _market_value(self, player_data: Dict) -> float:
+        """The fee to reason about. Estimated from the index when the client
+        supplies none, and flagged as an estimate wherever it is shown."""
+        value = player_data.get("market_value")
+        if isinstance(value, (int, float)) and value > 0:
+            return float(value)
+        index = (player_data.get("performance_index") or {}).get("value") or 50
+        return round(float(index) / 100 * self.ELITE_SPORTING_VALUE * 0.5, 0)
+
+    def _has_market_value(self, player_data: Dict) -> bool:
+        value = player_data.get("market_value")
+        return isinstance(value, (int, float)) and value > 0
+
+    def _age(self, player_data: Dict) -> int:
+        value = player_data.get("age")
+        return int(value) if isinstance(value, (int, float)) else self.ASSUMED_AGE
+
+    def _has_age(self, player_data: Dict) -> bool:
+        return isinstance(player_data.get("age"), (int, float))
+
     def _query_db(self, sql: str, params: dict, org_ids=None) -> list:
         """Run a read-only query restricted to the caller's tenants.
 
@@ -230,10 +257,19 @@ class ScoutingReportGenerator:
             "key_findings": [
                 f"Player ranks in the {int(performance_percentile)}th percentile overall",
                 f"Match compatibility score: {match_score}%",
-                f"Age profile: {player_data['age']} years - {'Optimal' if 23 <= player_data['age'] <= 28 else 'Consider age factor'}",
-                f"Financial fit: {'Within budget' if player_data['market_value'] <= team_data['budget'] * 0.4 else 'Stretches budget'}",
+                # Each of these states what it rests on. Asserting an age the
+                # source never carried, or a budget verdict built on a fee Kumu
+                # estimated itself, is precisely the kind of unsourced claim the
+                # rest of the report exists to avoid.
+                (f"Age profile: {self._age(player_data)} years - "
+                 f"{'Optimal' if 23 <= self._age(player_data) <= 28 else 'Consider age factor'}")
+                if self._has_age(player_data)
+                else "Age: not available in this data source",
+                (f"Financial fit: "
+                 f"{'Within budget' if self._market_value(player_data) <= (team_data.get('budget') or 0) * 0.4 else 'Stretches budget'}"
+                 f"{'' if self._has_market_value(player_data) else ' (against a Kumü-estimated fee)'}"),
             ],
-            "executive_statement": f"{player_data['name']} represents a {recommendation.lower()} acquisition for {team_data['name']}. Statistical analysis places the player in the {int(performance_percentile)}th percentile for their position in {team_data['league']}.",
+            "executive_statement": f"{player_data['name']} represents a {recommendation.lower()} acquisition for {team_data['name']}. Statistical analysis places the player in the {int(performance_percentile)}th percentile for their position in {team_data.get('league') or 'their league'}.",
         }
 
     def generate_statistical_overview(self, player_data: Dict, team_data: Dict) -> Dict:
@@ -719,7 +755,7 @@ class ScoutingReportGenerator:
         endurance_score = min((metrics.get("distance_covered_per_90", 0) / ref["distance_km"]) * 100, 100)
         intensity_score = min((metrics.get("high_intensity_runs", 0) / ref["runs"]) * 100, 100)
 
-        physical_age = player_data["age"]
+        physical_age = self._age(player_data)
         if physical_age < 24:
             development_stage = "Still developing physically"
             peak_years_remaining = 5 + (28 - physical_age)
@@ -777,7 +813,7 @@ class ScoutingReportGenerator:
 
     def _assess_injury_risk(self, player_data: Dict) -> Dict:
         """Assess injury risk factors"""
-        age = player_data["age"]
+        age = self._age(player_data)
         injury_history = player_data.get("injury_history", [])
         workload = player_data["metrics"]["movement"]["distance_covered_per_90"]
 
@@ -835,8 +871,8 @@ class ScoutingReportGenerator:
 
     def generate_market_analysis(self, player_data: Dict, team_data: Dict, org_ids=None) -> Dict:
         """Generate market value and financial analysis"""
-        current_value = player_data["market_value"]
-        age = player_data["age"]
+        current_value = self._market_value(player_data)
+        age = self._age(player_data)
         performance_index = player_data["performance_index"]["value"]
 
         # Calculate value projections
@@ -958,7 +994,7 @@ class ScoutingReportGenerator:
         self, player_data: Dict, team_data: Dict, projections: Dict
     ) -> Dict:
         """Calculate potential return on investment"""
-        initial_investment = player_data["market_value"]
+        initial_investment = self._market_value(player_data)
 
         # Sporting and commercial value are FLOWS spread over the contract,
         # while resale is a STOCK realised at the end. The previous version
@@ -1014,7 +1050,7 @@ class ScoutingReportGenerator:
     def _estimate_commercial_value(self, player_data: Dict) -> float:
         """Estimate commercial value (merchandise, sponsorship, etc.)"""
         # Simplified calculation
-        age_factor = 1.2 if player_data["age"] < 25 else 1.0 if player_data["age"] < 30 else 0.7
+        age_factor = 1.2 if self._age(player_data) < 25 else 1.0 if self._age(player_data) < 30 else 0.7
         # No marketability data source exists, so this derives from on-pitch
         # performance instead of a field that was never populated (the old
         # default left commercial value depending only on age).
@@ -1050,9 +1086,9 @@ class ScoutingReportGenerator:
         risk = 0
 
         # Age risk
-        if player_data["age"] > 28:
+        if self._age(player_data) > 28:
             risk += 15
-        if player_data["age"] > 30:
+        if self._age(player_data) > 30:
             risk += 20
 
         # Performance volatility
@@ -1066,24 +1102,24 @@ class ScoutingReportGenerator:
 
     def _recommend_contract_structure(self, player_data: Dict, team_data: Dict) -> Dict:
         """Recommend optimal contract structure"""
-        age = player_data["age"]
+        age = self._age(player_data)
 
         # Base recommendations on age and value
         if age < 24:
             base_length = 5
             option_years = 1
             sell_on_clause = True
-            buyout_clause = player_data["market_value"] * 2.5
+            buyout_clause = self._market_value(player_data) * 2.5
         elif age < 28:
             base_length = 4
             option_years = 1
             sell_on_clause = False
-            buyout_clause = player_data["market_value"] * 2.0
+            buyout_clause = self._market_value(player_data) * 2.0
         elif age < 31:
             base_length = 3
             option_years = 0
             sell_on_clause = False
-            buyout_clause = player_data["market_value"] * 1.5
+            buyout_clause = self._market_value(player_data) * 1.5
         else:
             base_length = 2
             option_years = 0
@@ -1112,14 +1148,14 @@ class ScoutingReportGenerator:
                 "injury_protection": "Essential" if age > 28 else "Recommended",
             },
             "total_package_value": self._calculate_total_package(
-                base_length, base_wage, player_data["market_value"]
+                base_length, base_wage, self._market_value(player_data)
             ),
         }
 
     def _calculate_base_wage(self, player_data: Dict, team_data: Dict) -> float:
         """Calculate recommended base wage"""
         # Base on market value and team wage structure
-        value_based_wage = player_data["market_value"] * self.WEEKLY_WAGE_RATE
+        value_based_wage = self._market_value(player_data) * self.WEEKLY_WAGE_RATE
 
         # Adjust for team budget
         budget_factor = min(team_data["budget"] / 200000000, 1.5)  # Normalize to 200M budget
@@ -1144,7 +1180,7 @@ class ScoutingReportGenerator:
         total_investment = self._calculate_total_package(
             4,  # Assume 4-year contract
             self._calculate_base_wage(player_data, team_data),
-            player_data["market_value"],
+            self._market_value(player_data),
         )
 
         budget_percentage = (total_investment / team_data["budget"]) * 100 if team_data.get("budget") else 0
@@ -1468,7 +1504,7 @@ class ScoutingReportGenerator:
 
     def _assess_age_risk(self, player_data: Dict) -> Dict:
         """Assess age-related risks"""
-        age = player_data["age"]
+        age = self._age(player_data)
 
         if age < 23:
             risk_score = 20
@@ -1616,7 +1652,7 @@ class ScoutingReportGenerator:
         self, player_data: Dict, market_analysis: Dict, position_strength: Dict
     ) -> float:
         """Calculate strategic opening offer"""
-        market_value = player_data["market_value"]
+        market_value = self._market_value(player_data)
 
         # Base on negotiation strength
         if position_strength["strength"] == "Strong":
@@ -1639,7 +1675,7 @@ class ScoutingReportGenerator:
         points = []
 
         # Age and contract length
-        if player_data["age"] < 25:
+        if self._age(player_data) < 25:
             points.append(
                 {
                     "topic": "Development potential",
@@ -1832,11 +1868,15 @@ class ScoutingReportGenerator:
         return {
             "id": player.id,
             "name": player.name,
-            "age": player.age or 26,
+            # Absence is preserved rather than filled here: the generator has
+            # accessors that supply a working assumption where the maths needs
+            # one, and flag it as an assumption where the reader needs to know.
+            # Collapsing it to 26 at this point destroyed that distinction.
+            "age": player.age,
             "position": player.position,
             "nationality": player.nationality,
             "current_team": getattr(player, "current_team", None),
-            "market_value": float(getattr(player, "market_value", 0) or 0),
+            "market_value": getattr(player, "market_value", None),
             "performance_index": getattr(player, "performance_index", None)
             or {"value": 70.0, "trend": 0.0, "volatility": 0.2, "confidence": 0.5},
             "metrics": cls.merge_metrics(getattr(player, "metrics", None)),
@@ -1958,7 +1998,7 @@ if __name__ == "__main__":
     # Print executive summary
     print("SCOUTING REPORT - EXECUTIVE SUMMARY")
     print("=" * 60)
-    print(f"Player: {player_data['name']} ({player_data['position']}, {player_data['age']} years)")
+    print(f"Player: {player_data['name']} ({player_data['position']}, {self._age(player_data)} years)")
     print(f"Target Club: {team_data['name']}")
     print(f"Match Score: {report['executive_summary']['match_score']}%")
     print(f"\nRecommendation: {report['executive_summary']['recommendation']}")
