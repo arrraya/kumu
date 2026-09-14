@@ -564,6 +564,7 @@ def get_squad(db: Session, team_id: int, org_ids=None) -> List[models.Player]:
             models.SquadMembership.player_id == models.Player.id,
         )
         .filter(models.SquadMembership.team_id == team_id)
+        .filter(models.SquadMembership.left_at.is_(None))
         .filter(models.SquadMembership.organization_id.in_(list(org_ids or [])))
         .all()
     )
@@ -591,17 +592,20 @@ def add_player_to_squad(
         return None
 
     if source == "user":
-        # Scoped: moving a player out of "any other squad" must never reach
-        # into another tenant's squads.
+        # Closed rather than deleted: a move is the one event Kumu will need
+        # in order to show that its fit score predicts anything, and deleting
+        # the previous spell is what made transfers invisible. Scoped so this
+        # never reaches into another tenant's squads.
         db.query(models.SquadMembership).filter(
             models.SquadMembership.player_id == player_id,
             models.SquadMembership.source == "user",
+            models.SquadMembership.left_at.is_(None),
             models.SquadMembership.organization_id == org_id,
-        ).delete(synchronize_session=False)
+        ).update({"left_at": datetime.utcnow()}, synchronize_session=False)
 
     already_there = (
         db.query(models.SquadMembership)
-        .filter_by(player_id=player_id, team_id=team_id, source=source)
+        .filter_by(player_id=player_id, team_id=team_id, source=source, left_at=None)
         .first()
     )
     if not already_there:
@@ -619,11 +623,12 @@ def remove_player_from_squad(
     """Take a player out of a team's squad."""
     # Scoped so one tenant cannot release a player from another's squad by
     # guessing the ids.
+    # Releasing a player ends his spell; it does not erase that it happened.
     removed = (
         db.query(models.SquadMembership)
         .filter_by(player_id=player_id, team_id=team_id, source=source,
-                   organization_id=org_id)
-        .delete(synchronize_session=False)
+                   organization_id=org_id, left_at=None)
+        .update({"left_at": datetime.utcnow()}, synchronize_session=False)
     )
     db.commit()
     return removed > 0

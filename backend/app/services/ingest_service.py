@@ -227,10 +227,15 @@ def _ingest_club(db: Session, payload: IngestPayload, org_id: int) -> Dict[str, 
             models.Player.organization_id == org_id,
         ).all()
 
+        # Re-importing a squad closes the spells it replaces instead of
+        # wiping them, so a client's own history builds up import by import.
+        from datetime import datetime as _dt
+
         db.query(models.SquadMembership).filter(
             models.SquadMembership.team_id == team.id,
             models.SquadMembership.organization_id == org_id,
-        ).delete(synchronize_session=False)
+            models.SquadMembership.left_at.is_(None),
+        ).update({"left_at": _dt.utcnow()}, synchronize_session=False)
 
         for player in members:
             db.add(models.SquadMembership(

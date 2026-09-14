@@ -124,6 +124,11 @@ class SquadMembership(Base):
     player_id = Column(Integer, ForeignKey("players.id"), index=True)
     team_id = Column(Integer, ForeignKey("teams.id"), index=True)
     source = Column(String, default="user")
+    # A spell, not a snapshot. An open end means the player is there now; a
+    # closed one is a move Kumu can later measure against what followed. This
+    # is what makes transfers visible at all: deleting the old row erased them.
+    joined_at = Column(DateTime, default=datetime.utcnow)
+    left_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     player = relationship("Player")

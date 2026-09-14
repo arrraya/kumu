@@ -1262,6 +1262,8 @@ class ScoutingReportGenerator:
                 FROM squad_memberships m
                 JOIN players p ON p.id = m.player_id
                 WHERE m.team_id = :team_id AND p.position = :position
+                  AND m.left_at IS NULL
+                  AND m.left_at IS NULL
                   AND p.name <> :name AND p.performance_index IS NOT NULL
                   AND m.organization_id IN :org_ids
                 ORDER BY COALESCE((p.performance_index->>'value')::float, 0) DESC

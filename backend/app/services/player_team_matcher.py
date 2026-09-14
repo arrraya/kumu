@@ -214,7 +214,8 @@ class PlayerTeamMatcher:
 
             row = scoped_query(
                 "SELECT count(*) FROM squad_memberships "
-                "WHERE team_id = :t AND organization_id IN :org_ids",
+                "WHERE team_id = :t AND left_at IS NULL "
+                "AND organization_id IN :org_ids",
                 {"t": int(team_id)},
                 org_ids,
             )
@@ -235,6 +236,7 @@ class PlayerTeamMatcher:
                 FROM squad_memberships m
                 JOIN players p ON p.id = m.player_id
                 WHERE m.team_id = :team_id AND p.position = :position
+                  AND m.left_at IS NULL
                   AND m.organization_id IN :org_ids
                 """,
                 {"team_id": int(team_id), "position": position},
