@@ -197,7 +197,7 @@ def describe_capabilities(payload: IngestPayload) -> Dict[str, Any]:
         )
     if with_value == 0:
         warnings.append(
-            "No market values supplied. Kumu will estimate them, and every "
+            "No market values supplied. Kumü will estimate them, and every "
             "valuation verdict will be flagged as an internal estimate."
         )
 

@@ -64,3 +64,6 @@ backend/venv/
 backend/venv_old/
 backend/.env
 backend/.env.backup
+
+# Next.js build output
+frontend/.next/

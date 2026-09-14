@@ -24,19 +24,19 @@ const CAPABILITY_LABELS: Record<string, string> = {
 }
 
 const EJEMPLO = {
-  source: 'mi-proveedor',
+  source: 'my-provider',
   club: {
-    external_id: 'mi-club',
+    external_id: 'my-club',
     name: 'Your club',
     league: 'League',
     budget: 8000000,
     possession: 0.53,
     pressing_intensity: 0.6,
-    squad: ['jugador-1'],
+    squad: ['player-1'],
   },
   players: [
     {
-      external_id: 'jugador-1',
+      external_id: 'player-1',
       name: 'Player name',
       position: 'ST',
       metrics: { shooting: { goals_per_90: 0.5, shots_per_90: 2.4 } },
@@ -252,7 +252,8 @@ const DataUpload: React.FC = () => {
         <div className="bg-white rounded-lg shadow p-6 border-l-4 border-green-600">
           <h3 className="font-medium text-gray-900 mb-2">Loaded</h3>
           <p className="text-sm text-gray-700">
-            {result.result.players_written} players saved
+            {result.result.players_written}{' '}
+            {result.result.players_written === 1 ? 'player' : 'players'} saved
             {result.result.club
               ? ` · ${result.result.club.name} with ${result.result.club.squad_size} in the squad`
               : ''}
