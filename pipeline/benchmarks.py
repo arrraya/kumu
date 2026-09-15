@@ -13,21 +13,15 @@ LEAGUE_LABEL = "World Cup 2022"
 PERCENTILES = [10, 25, 50, 75, 90]
 
 # Map StatsBomb verbose positions to Kumu's position taxonomy
-POSITION_MAP = {
-    "Goalkeeper": "GK",
-    "Right Back": "RB", "Left Back": "LB",
-    "Right Center Back": "CB", "Left Center Back": "CB", "Center Back": "CB",
-    "Right Wing Back": "RB", "Left Wing Back": "LB",
-    "Center Defensive Midfield": "CDM",
-    "Right Defensive Midfield": "CDM", "Left Defensive Midfield": "CDM",
-    "Center Midfield": "CM", "Right Center Midfield": "CM", "Left Center Midfield": "CM",
-    "Center Attacking Midfield": "CAM",
-    "Right Attacking Midfield": "CAM", "Left Attacking Midfield": "CAM",
-    "Right Midfield": "RW", "Left Midfield": "LW",
-    "Right Wing": "RW", "Left Wing": "LW",
-    "Center Forward": "ST", "Right Center Forward": "ST", "Left Center Forward": "ST",
-    "Secondary Striker": "ST",
-}
+# Imported rather than redefined: benchmarks and the scoring core were both
+# carrying their own copy of this table, and a duplicated lookup is what left
+# market.py pricing defenders on a retired rating formula for weeks. One
+# definition, and the pipeline reads it like everyone else.
+import os as _os
+import sys as _sys
+
+_sys.path.insert(0, _os.path.join(_os.path.dirname(__file__), "..", "backend"))
+from app.core.scoring import PROVIDER_POSITION_MAP as POSITION_MAP  # noqa: E402
 
 METRIC_PATHS = {
     "pass_completion": ("passing", "completion_rate"),
