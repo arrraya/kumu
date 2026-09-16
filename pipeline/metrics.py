@@ -31,29 +31,78 @@ def load_events() -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------- pass difficulty
+N_FOLDS = 5
+
+
 def train_pass_difficulty_model(events: pd.DataFrame):
-    """XGBoost classifier on pass origin/destination coords (handbook approach).
+    """XGBoost classifier on pass origin/destination coords.
 
     Target: 1 if the pass was completed (pass_outcome is NaN in StatsBomb data).
-    Returns the fitted model. difficulty = 1 - P(complete).
+    Returned model is fitted on everything, for scoring passes it has never
+    seen. Passes that were part of training must NOT be scored with it — see
+    `out_of_fold_difficulty`.
     """
     passes = events[events["type"] == "Pass"].copy()
     passes = passes.dropna(subset=["location", "pass_end_location"])
-
-    xy = np.array(passes["location"].tolist(), dtype=float)
-    xy2 = np.array(passes["pass_end_location"].tolist(), dtype=float)
-    X = np.hstack([xy, xy2])
-    y = passes["pass_outcome"].isna().astype(int).values  # NaN outcome == completed
+    X, y = _pass_features(passes)
 
     model = xgb.XGBClassifier(random_state=0, n_estimators=200, max_depth=5)
     model.fit(X, y)
     return model
 
 
-def pass_difficulty_scores(model, passes: pd.DataFrame) -> np.ndarray:
+def _pass_features(passes: pd.DataFrame):
     xy = np.array(passes["location"].tolist(), dtype=float)
     xy2 = np.array(passes["pass_end_location"].tolist(), dtype=float)
     X = np.hstack([xy, xy2])
+    y = passes["pass_outcome"].isna().astype(int).values
+    return X, y
+
+
+def out_of_fold_difficulty(passes: pd.DataFrame, n_folds: int = N_FOLDS):
+    """Difficulty for every pass, from a model that never saw that pass.
+
+    A model scoring its own training data does not report how hard a pass was;
+    it partly reports what it memorised about which passes failed. With 200
+    trees at depth 5 that memory is considerable, and the resulting score feeds
+    the match rating, the index, and everything above it.
+
+    Each pass is instead scored by a model fitted on the other folds. Every pass
+    still gets a score, and no pass is scored by a model that has seen it.
+
+    A note on what this can and cannot fix: the destination of a FAILED pass is
+    partly produced by the failure — an intercepted ball ends where it was cut
+    off, not where it was aimed. That makes the feature partly a consequence of
+    the target, and no amount of cross-validation removes it. Holding out folds
+    removes memorisation; it does not remove the leak that is baked into the
+    feature. True difficulty modelling needs pass INTENT, which event data does
+    not record. Declared here so nobody later mistakes the AUC for proof that
+    the score is clean.
+
+    Returns (difficulty array, mean held-out AUC).
+    """
+    from sklearn.metrics import roc_auc_score
+    from sklearn.model_selection import StratifiedKFold
+
+    X, y = _pass_features(passes)
+    difficulty = np.zeros(len(passes), dtype=float)
+    aucs = []
+
+    splitter = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=0)
+    for train_idx, test_idx in splitter.split(X, y):
+        fold = xgb.XGBClassifier(random_state=0, n_estimators=200, max_depth=5)
+        fold.fit(X[train_idx], y[train_idx])
+        p_complete = fold.predict_proba(X[test_idx])[:, 1]
+        difficulty[test_idx] = 1.0 - p_complete
+        if len(set(y[test_idx])) > 1:
+            aucs.append(roc_auc_score(y[test_idx], p_complete))
+
+    return difficulty, float(np.mean(aucs)) if aucs else float("nan")
+
+
+def pass_difficulty_scores(model, passes: pd.DataFrame) -> np.ndarray:
+    """For passes the model has not been trained on, e.g. a client's upload."""
+    X, _ = _pass_features(passes)
     p_complete = model.predict_proba(X)[:, 1]
     return 1.0 - p_complete  # higher = harder pass
 
@@ -74,7 +123,10 @@ def build_player_metrics(events: pd.DataFrame, model) -> dict:
 
     # Precompute pass difficulty for all valid passes once
     all_passes = ev[(ev["type"] == "Pass")].dropna(subset=["location", "pass_end_location"]).copy()
-    all_passes["difficulty"] = pass_difficulty_scores(model, all_passes)
+    # Out-of-fold: these passes trained the model, so scoring them with it
+    # would report memorisation rather than difficulty.
+    all_passes["difficulty"], auc = out_of_fold_difficulty(all_passes)
+    print(f"Pass difficulty held-out AUC: {auc:.3f}")
 
     minutes = minutes_played_approx(ev).groupby("player")["minutes"].sum()
 
