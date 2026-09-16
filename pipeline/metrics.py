@@ -13,6 +13,8 @@ import numpy as np
 import pandas as pd
 import xgboost as xgb
 
+import spatial
+
 # Scoring lives in one place only: the pipeline is one adapter among several,
 # and adapters depend on the core rather than carrying their own copy. A second
 # copy is what left market.py pricing defenders on a retired formula.
@@ -244,6 +246,9 @@ def build_player_metrics(events: pd.DataFrame, model) -> dict:
             },
             "performance_history": history,
             "performance_index": perf_index,
+            # Computed here because pev is already the player's events: the
+            # coordinates exist at this point and were previously discarded.
+            "spatial_profile": spatial.spatial_profile(pev, mins),
         }
 
     return players

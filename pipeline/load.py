@@ -118,6 +118,7 @@ def main():
             "market_value": estimate_market_value(p.get("performance_index")),
             "performance_index": p.get("performance_index"),
             "metrics": p["metrics"],
+            "spatial_profile": p.get("spatial_profile"),
             "performance_history": p["performance_history"],
         })
 
@@ -139,12 +140,13 @@ def main():
             conn.execute(text("""
                 INSERT INTO players (external_id, name, age, position, nationality,
                                      current_team, market_value, performance_index,
-                                     metrics, performance_history)
+                                     metrics, performance_history, spatial_profile)
                 VALUES (:external_id, :name, :age, :position, :nationality,
                         :current_team, :market_value,
                         CAST(:performance_index AS JSON),
                         CAST(:metrics AS JSON),
-                        CAST(:performance_history AS JSON))
+                        CAST(:performance_history AS JSON),
+                        CAST(:spatial_profile AS JSON))
                 ON CONFLICT (external_id) DO UPDATE SET
                     name = EXCLUDED.name,
                     age = EXCLUDED.age,
@@ -154,11 +156,13 @@ def main():
                     market_value = EXCLUDED.market_value,
                     performance_index = EXCLUDED.performance_index,
                     metrics = EXCLUDED.metrics,
+                    spatial_profile = EXCLUDED.spatial_profile,
                     performance_history = EXCLUDED.performance_history,
                     updated_at = NOW()
             """), {
                 **r,
                 "performance_index": json.dumps(r["performance_index"]),
+                "spatial_profile": json.dumps(r.get("spatial_profile")),
                 "metrics": json.dumps(r["metrics"]),
                 "performance_history": json.dumps(r["performance_history"]),
             })
