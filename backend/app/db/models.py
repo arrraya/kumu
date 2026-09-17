@@ -72,6 +72,8 @@ class Player(Base):
     # JSON fields for complex data
     performance_index = Column(JSON)
     metrics = Column(JSON)
+    # Zone-to-zone pass flows: the compact spatial fingerprint.
+    spatial_profile = Column(JSON)
     performance_history = Column(JSON)
 
     # Relationships
@@ -97,6 +99,8 @@ class Team(Base):
     # data, but only clubs are valid transfer destinations.
     team_type = Column(String, default="club")
     playing_style = Column(JSON)
+    # Zone-to-zone pass flows: the compact spatial fingerprint.
+    spatial_profile = Column(JSON)
     requirements = Column(JSON)
     created_at = Column(DateTime, default=datetime.utcnow)
 

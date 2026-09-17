@@ -396,6 +396,7 @@ class ScoutingReportGenerator:
                 position, team_data.get("formation", "4-3-3")
             ),
             "style_compatibility": self._assess_style_fit(player_data, team_data),
+            "style_basis": self._style_basis(team_data),
             "role_suitability": self._assess_role_suitability(player_data, team_data),
             "tactical_flexibility": self._assess_flexibility(player_data),
         }
@@ -423,6 +424,31 @@ class ScoutingReportGenerator:
                 }
 
         return {"fit": "Unknown", "score": 50, "note": "Formation compatibility unclear"}
+
+    def _style_basis(self, team_data: Dict) -> Dict:
+        """What the style judgement rests on, curated and measured side by side.
+
+        The fit still uses the curated profile. The measured one is reported
+        beside it rather than substituted for it, because territory read off a
+        single tournament is confounded with game state: a side that is losing
+        pushes up, a side that is winning sits back. Over a full league season
+        that averages out and the measurement becomes the better input. Until
+        then, swapping a known bias for a hidden one would not be an
+        improvement, and showing both lets the reader judge.
+        """
+        derived = (team_data.get("spatial_profile") or {}).get("style") or {}
+        return {
+            "used_for_fit": "declared club profile (curation)",
+            "measured_territory": derived.get("territory"),
+            "measured_progression": derived.get("progression"),
+            "measured_from": derived.get("basis"),
+            "passes_measured": derived.get("passes_counted"),
+            "caveat": (
+                "Measured style is reported for reference, not used in the score: "
+                "territory over a single tournament reflects game state as much as "
+                "intent."
+            ) if derived else "No measured style available for this club.",
+        }
 
     def _assess_style_fit(self, player_data: Dict, team_data: Dict) -> Dict:
         """Assess playing style compatibility"""

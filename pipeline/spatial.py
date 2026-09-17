@@ -111,3 +111,54 @@ def team_profile(player_profiles: list) -> dict:
         "passes_counted": sum(flows.values()),
         "shares": {k: round(v / total, 5) for k, v in flows.items()},
     }
+
+
+def style_from_flows(flows: dict) -> dict:
+    """Style measured from where a side actually plays, not declared.
+
+    Club playing styles are curation today: somebody typed possession 0.55 and
+    pressing 0.61 for each club. Every time curated inputs were replaced by
+    derived ones, the curation turned out to carry a bias nobody had spotted.
+
+    Two things the flow matrix genuinely supports:
+
+    `territory` — the share of passes played in the attacking third versus the
+    defensive third, rescaled to 0-1. A side that circulates at the back and one
+    that lives in the opponent's half have visibly different matrices.
+
+    `progression` — mean forward gain per pass, normalised by pitch length. It
+    separates building from going direct.
+
+    Neither is "possession" in the broadcast sense; that needs time on the ball,
+    which event data does not carry. They describe style better than a number
+    someone typed, and they are measurable, which is the whole point.
+    """
+    if not flows:
+        return {"territory": None, "progression": None, "passes_counted": 0,
+                "basis": "no pass data"}
+
+    total = 0
+    tercio_propio = 0
+    tercio_rival = 0
+    avance = 0.0
+
+    for key, n in flows.items():
+        desde, hasta = (int(z) for z in key.split("-"))
+        x1, _ = zone_centre(desde)
+        x2, _ = zone_centre(hasta)
+        total += n
+        avance += (x2 - x1) * n
+        if x1 < PITCH_X / 3:
+            tercio_propio += n
+        elif x1 > PITCH_X * 2 / 3:
+            tercio_rival += n
+
+    extremos = tercio_propio + tercio_rival
+    territory = (tercio_rival / extremos) if extremos else 0.5
+
+    return {
+        "territory": round(territory, 3),
+        "progression": round(avance / total / PITCH_X, 4),
+        "passes_counted": total,
+        "basis": "derived from squad pass flows",
+    }
