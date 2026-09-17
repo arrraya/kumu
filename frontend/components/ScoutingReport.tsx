@@ -13,6 +13,7 @@ import {
 } from 'recharts';
 import { Player, Match } from '@/types';
 import { api } from '@/lib/api';
+import PitchMap from '@/components/PitchMap'
 
 interface ScoutingReportProps {
   player: Player | null;
@@ -649,6 +650,16 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
 
     return (
       <div className="space-y-6">
+        {/* Placed first: a scout opening this tab wants to know where the
+            player operates before reading reference scores. The athletic
+            numbers below are compared against role references rather than
+            measured, because tracking data is not in the feed — the map is
+            the part of this tab that comes from what actually happened. */}
+        <PitchMap
+          profile={(player as any)?.spatial_profile ?? (player as any)?.spatialProfile}
+          name={player?.name}
+        />
+
         <div className="bg-white rounded-lg shadow-md p-6">
           <h3 className="text-xl font-semibold mb-6">Physical & Athletic Profile</h3>
           

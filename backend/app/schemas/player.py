@@ -23,6 +23,9 @@ class Player(BaseModel):
     market_value: Optional[float] = None
     performance_index: Optional[PerformanceIndex] = None
     metrics: Dict[str, Any] = Field(default_factory=dict)
+    # Zone-to-zone pass flows. Without this line the column would be dropped
+    # silently on its way to the frontend, as five fields were before it.
+    spatial_profile: Optional[Dict[str, Any]] = None
     performance_history: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

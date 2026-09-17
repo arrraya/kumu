@@ -21,6 +21,7 @@ function normalizePlayer(p: any): any {
     marketValue: p.marketValue ?? p.market_value ?? 0,
     currentTeam: p.currentTeam ?? p.current_team ?? '',
     performanceIndex: p.performanceIndex ?? p.performance_index ?? null,
+    spatial_profile: p.spatial_profile ?? p.spatialProfile ?? null,
   };
 }
 
