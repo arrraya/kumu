@@ -55,7 +55,7 @@ const PitchMap: React.FC<{ profile?: Profile | null; name?: string }> = ({ profi
     })
     // Only the strongest links: drawing all 576 possible pairs is a smear, and
     // the shape of a player's game lives in the handful he repeats.
-    return all.sort((a, b) => b.n - a.n).slice(0, 10)
+    return all.sort((a, b) => b.n - a.n).slice(0, 16)
   }, [profile])
 
   const maxFlow = Math.max(1, ...flows.map((f) => f.n))
