@@ -55,7 +55,7 @@ const PitchMap: React.FC<{ profile?: Profile | null; name?: string }> = ({ profi
     })
     // Only the strongest links: drawing all 576 possible pairs is a smear, and
     // the shape of a player's game lives in the handful he repeats.
-    return all.sort((a, b) => b.n - a.n).slice(0, 14)
+    return all.sort((a, b) => b.n - a.n).slice(0, 10)
   }, [profile])
 
   const maxFlow = Math.max(1, ...flows.map((f) => f.n))
@@ -97,6 +97,11 @@ const PitchMap: React.FC<{ profile?: Profile | null; name?: string }> = ({ profi
         {name ? ` · ${name}` : ''} · attacking left to right
       </p>
 
+      {/* Capped width: the pitch is 3:2, so a full-width svg on a desktop
+          column grew past the viewport and pushed the heading and the
+          view toggle off the top of the screen — the control for the map
+          was scrolled away by the map itself. */}
+      <div className="mx-auto w-full max-w-[560px]">
       <svg viewBox={`-2 -2 ${W + 4} ${H + 4}`} className="w-full">
         <rect x="0" y="0" width={W} height={H} fill="#f7faf8" stroke="#cbd5d0" strokeWidth="0.4" />
         <line x1={W / 2} y1="0" x2={W / 2} y2={H} stroke="#cbd5d0" strokeWidth="0.4" />
@@ -116,8 +121,12 @@ const PitchMap: React.FC<{ profile?: Profile | null; name?: string }> = ({ profi
         {view === 'flows' && (
           <>
             <defs>
-              <marker id="kumu-arrow" viewBox="0 0 10 10" refX="9" refY="5"
-                markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+              {/* userSpaceOnUse: by default an arrowhead scales with stroke
+                  width, so the strongest flows grew heads that swallowed the
+                  pitch. Fixed size keeps the line weight carrying the volume. */}
+              <marker id="kumu-arrow" viewBox="0 0 10 10" refX="8" refY="5"
+                markerWidth="3" markerHeight="3" markerUnits="userSpaceOnUse"
+                orient="auto-start-reverse">
                 <path d="M 0 0 L 10 5 L 0 10 z" fill="#16a34a" />
               </marker>
             </defs>
@@ -130,7 +139,7 @@ const PitchMap: React.FC<{ profile?: Profile | null; name?: string }> = ({ profi
               }
               return (
                 <line key={i} x1={a.cx} y1={a.cy} x2={b.cx} y2={b.cy}
-                  stroke="#16a34a" strokeWidth={0.4 + (n / maxFlow) * 2.2}
+                  stroke="#16a34a" strokeWidth={0.25 + (n / maxFlow) * 1.1}
                   opacity={0.25 + (n / maxFlow) * 0.5}
                   markerEnd="url(#kumu-arrow)" />
               )
@@ -147,6 +156,7 @@ const PitchMap: React.FC<{ profile?: Profile | null; name?: string }> = ({ profi
             stroke="#e2e8e5" strokeWidth="0.2" />
         ))}
       </svg>
+      </div>
     </div>
   )
 }
