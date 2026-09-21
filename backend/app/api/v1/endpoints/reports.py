@@ -10,6 +10,7 @@ from app.services.pdf_generator import PDFReportGenerator
 import app.services.player_service as player_service
 import app.services.team_service as team_service
 from app.core import security
+from app.db.tenancy import get_scoped
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,7 @@ async def generate_report(
     request: report_schemas.GenerateReportRequest,
     db: Session = Depends(get_db),
     org_ids: list = Depends(security.readable_org_ids),
+    current_user=Depends(security.get_current_user),
 ):
     """Generate a scouting report"""
     # Get player and team data
@@ -117,11 +119,20 @@ async def generate_report(
     report_data = _numpy_to_native(report_data)
 
     # Save report to database
+    # Stamped with an owner: reports used to be saved with none, so every one
+    # generated since tenancy was orphaned, and scoping the reads below would
+    # have made them unreadable. Anonymous demo reports belong to the public
+    # tenant; a signed-in client's belong to their organisation.
+    owner_org = (
+        current_user.organization_id if current_user
+        else security.get_public_org_id(db)
+    )
     db_report = models.ScoutingReport(
         player_id=request.player_id,
         team_id=request.team_id,
         match_id=request.match_id,
         report_data=report_data,
+        organization_id=owner_org,
     )
     db.add(db_report)
     db.commit()
@@ -138,9 +149,13 @@ async def generate_report(
 
 
 @router.get("/{report_id}", response_model=report_schemas.ScoutingReport)
-def get_report(report_id: int, db: Session = Depends(get_db)):
+def get_report(
+    report_id: int,
+    db: Session = Depends(get_db),
+    org_ids: list = Depends(security.readable_org_ids),
+):
     """Get an existing scouting report"""
-    report = db.query(models.ScoutingReport).filter(models.ScoutingReport.id == report_id).first()
+    report = get_scoped(db, models.ScoutingReport, report_id, org_ids)
 
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
@@ -150,9 +165,13 @@ def get_report(report_id: int, db: Session = Depends(get_db)):
 
 @router.get("/{report_id}/pdf")
 @router.post("/{report_id}/pdf")
-def export_report_pdf(report_id: int, db: Session = Depends(get_db)):
+def export_report_pdf(
+    report_id: int,
+    db: Session = Depends(get_db),
+    org_ids: list = Depends(security.readable_org_ids),
+):
     """Export a scouting report as PDF (supports both GET and POST)"""
-    report = db.query(models.ScoutingReport).filter(models.ScoutingReport.id == report_id).first()
+    report = get_scoped(db, models.ScoutingReport, report_id, org_ids)
 
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
@@ -175,9 +194,13 @@ def export_report_pdf(report_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{report_id}")
-def export_report_pdf_short(report_id: int, db: Session = Depends(get_db)):
+def export_report_pdf_short(
+    report_id: int,
+    db: Session = Depends(get_db),
+    org_ids: list = Depends(security.readable_org_ids),
+):
     """Export a scouting report as PDF via POST /api/v1/reports/{report_id}"""
-    report = db.query(models.ScoutingReport).filter(models.ScoutingReport.id == report_id).first()
+    report = get_scoped(db, models.ScoutingReport, report_id, org_ids)
 
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
