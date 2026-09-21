@@ -76,8 +76,13 @@ async def calculate_matches(
 
     # National sides exist as teams so their squads are real, but nobody signs
     # for a country: transfer destinations are clubs only.
+    # Scoped like every other read. This query used to list every club in the
+    # database, so one client would have seen another client's private clubs as
+    # possible destinations — a leak the tenancy audit missed because the raw
+    # listing endpoints were fixed and this one builds its own query.
     query = db.query(models.Team).filter(
-        (models.Team.team_type == "club") | (models.Team.team_type.is_(None))
+        (models.Team.team_type == "club") | (models.Team.team_type.is_(None)),
+        models.Team.organization_id.in_(list(org_ids)),
     )
     if request.team_ids:
         query = query.filter(models.Team.id.in_([int(t) for t in request.team_ids]))
@@ -86,6 +91,17 @@ async def calculate_matches(
         raise HTTPException(status_code=404, detail="No teams available for matching")
 
     matcher_player = _to_matcher_player(player)
+
+    # A client may upload a player with no valuation, which the contract allows.
+    # The offer range used to multiply that None and 500 the whole request. It
+    # now falls back to the same index-based estimate the report uses, so the
+    # two never disagree about what the player is worth.
+    from app.services.scouting_report_generator import ScoutingReportGenerator
+
+    reference_value = ScoutingReportGenerator()._market_value({
+        "market_value": player.market_value,
+        "performance_index": player.performance_index,
+    })
 
     matches = []
     for team in teams:
@@ -108,9 +124,9 @@ async def calculate_matches(
                 growth=breakdown["growth_potential"],
             ),
             offer=match_schemas.MatchOffer(
-                minimum=player.market_value * 0.8,
-                maximum=player.market_value * 1.2,
-                recommended=player.market_value,
+                minimum=reference_value * 0.8,
+                maximum=reference_value * 1.2,
+                recommended=reference_value,
             ),
             recommendation=matcher.generate_recommendation(
                 matcher_player, matcher_team, result
