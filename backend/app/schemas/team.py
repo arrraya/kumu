@@ -25,16 +25,37 @@ class TeamRequirements(BaseModel):
 
 
 class TeamBase(BaseModel):
+    """Shape shared by every team response.
+
+    Lenient on purpose. This model also serialises teams a client created
+    through ingest, where league, country and budget are optional, and a
+    response schema that rejects data already stored does not protect anything —
+    it just makes the owner's own listing return 500. That is what happened:
+    two imported clubs had no country and broke /teams for their organisation.
+    Validation belongs on the way in, below, not on the way out.
+    """
+
     name: str
-    league: str
-    country: str
-    budget: float = Field(..., ge=0)
-    formation: str = Field(..., pattern=r"^(4-3-3|4-4-2|4-2-3-1|3-5-2|5-3-2)$")
+    league: Optional[str] = None
+    country: Optional[str] = None
+    budget: Optional[float] = Field(None, ge=0)
+    # No pattern here: the old one allowed five formations, so a club storing
+    # 4-1-4-1 or 3-4-3 — both common — would have broken its own listing too.
+    formation: Optional[str] = None
+
+
+FORMATION_PATTERN = r"^\d(-\d){2,4}$"
 
 
 class TeamCreate(TeamBase):
+    """Input validation lives here, where rejecting bad data is useful."""
+
     external_id: str
     playing_style: PlayingStyle
+    league: str
+    country: str
+    budget: float = Field(..., ge=0)
+    formation: str = Field("4-3-3", pattern=FORMATION_PATTERN)
 
 
 class TeamUpdate(BaseModel):
@@ -49,7 +70,7 @@ class TeamUpdate(BaseModel):
 class Team(TeamBase):
     id: int
     external_id: Optional[str] = None  # Make optional since some teams don't have external IDs
-    playing_style: PlayingStyle
+    playing_style: Optional[PlayingStyle] = None
     logo: Optional[str] = None
     # "club" or "national" — the UI needs this to keep national sides out of
     # the transfer market while still showing their real squads.
