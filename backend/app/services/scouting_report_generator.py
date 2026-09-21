@@ -61,6 +61,30 @@ class ScoutingReportGenerator:
         return markets.anchor_for(
             markets.market_of(team_data.get("league"), team_data.get("country")))
 
+    # The index a club can find almost for free. Value is what a player adds
+    # ABOVE that, not his absolute level: a squad-filler in the Premier League is
+    # still a Premier League player, but he is worth little to a club that can
+    # sign another like him cheaply. Declared curation, about one and a half
+    # deviations below the typical player at 70.
+    REPLACEMENT_INDEX = 55.0
+
+    def _above_replacement(self, index) -> float:
+        """Share of the gap between replacement and elite that a player covers."""
+        if not isinstance(index, (int, float)):
+            return 0.0
+        span = 100.0 - self.REPLACEMENT_INDEX
+        return max(0.0, min(1.0, (float(index) - self.REPLACEMENT_INDEX) / span))
+
+    def _projected_for(self, player_data: Dict, team_data: Dict) -> Dict:
+        """The index adjustment, exposed so the report can state it."""
+        from app.core import markets
+        index = (player_data.get("performance_index") or {}).get("value")
+        return markets.project_index(
+            index,
+            self._seller_anchor(player_data).get("market", markets.DEFAULT_MARKET),
+            self._buyer_anchor(team_data).get("market", markets.DEFAULT_MARKET),
+        )
+
     def _market_value(self, player_data: Dict) -> float:
         """The fee to reason about. Estimated from the index when the client
         supplies none, and flagged as an estimate wherever it is shown."""
@@ -1080,6 +1104,7 @@ class ScoutingReportGenerator:
                     self._seller_anchor(player_data).get("market")
                     != self._buyer_anchor(team_data).get("market")
                 ),
+                "projected_index": self._projected_for(player_data, team_data),
             },
         }
 
@@ -1091,9 +1116,23 @@ class ScoutingReportGenerator:
             player_data["position"], 1.0
         )
 
+        # Valued at the index he is expected to post in the BUYER's league, not
+        # the one he earned in his own. Without this a player from a weaker
+        # league was assumed to perform identically everywhere, which is what
+        # made a Chilean midfielder look like a Premier League bargain.
+        from app.core import markets
+
+        projected = markets.project_index(
+            performance_index,
+            self._seller_anchor(player_data).get("market", markets.DEFAULT_MARKET),
+            self._buyer_anchor(team_data).get("market", markets.DEFAULT_MARKET),
+        )
+        effective_index = projected["value"] if projected["value"] is not None else performance_index
+
         base_sporting_value = (
-            performance_index / 100
-        ) * self._buyer_anchor(team_data)["value"] * position_importance
+            self._above_replacement(effective_index)
+            * self._buyer_anchor(team_data)["value"] * position_importance
+        )
 
         # Adjust for team needs
         if player_data["position"] in team_data.get("priority_positions", []):
@@ -1108,10 +1147,10 @@ class ScoutingReportGenerator:
         # No marketability data source exists, so this derives from on-pitch
         # performance instead of a field that was never populated (the old
         # default left commercial value depending only on age).
-        index = (player_data.get("performance_index") or {}).get("value")
-        marketability = (
-            min(float(index), 100) / 100 if isinstance(index, (int, float)) else 0.5
-        )
+        # Marketability follows what he is expected to post AT the buyer, above
+        # replacement: a player who will not start does not sell shirts there.
+        projected = self._projected_for(player_data, team_data or {})
+        marketability = self._above_replacement(projected.get("value"))
 
         # Same proportion to sporting value as at the elite reference, on the
         # buyer's scale: shirt sales in Santiago are not shirt sales in Madrid.

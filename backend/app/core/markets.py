@@ -153,3 +153,55 @@ def player_market(db, player_id) -> str:
     if not row or row[2] == "national":
         return DEFAULT_MARKET
     return market_of(row[0], row[1])
+
+
+# How demanding each league is, relative to the Premier League. A match rating
+# earned against weaker opposition is worth less than the same rating against
+# stronger opposition, and the index cannot see that on its own: a Chilean
+# midfielder's stats, normalised against World Cup players, came out at 79.9
+# as though he had earned them against that standard.
+#
+# Declared curation, pending data. Deriving it needs a player's index measured
+# separately at each club, so that a move shows what the jump cost him; the
+# record of moves is already kept, but the index is still one figure per player.
+# Season-by-season licensed data supplies the missing half.
+CURATED_STRENGTH = {
+    "premier_league": 1.00,
+    "la_liga": 0.95,
+    "bundesliga": 0.92,
+    "serie_a": 0.92,
+    "ligue_1": 0.86,
+    "international": 0.90,
+    "eredivisie": 0.76,
+    "primeira_liga": 0.76,
+    "belgian_pro_league": 0.73,
+    "brasileirao": 0.73,
+    "saudi_pro_league": 0.70,
+    "mls": 0.68,
+    "liga_mx": 0.68,
+    "argentina_primera": 0.68,
+    "chile_primera": 0.58,
+}
+
+
+def strength_for(market: str) -> float:
+    return CURATED_STRENGTH.get(market, CURATED_STRENGTH[DEFAULT_MARKET])
+
+
+def project_index(index: float, from_market: str, to_market: str) -> dict:
+    """The index a player would be expected to post in another league.
+
+    Performance scales with the ratio of the two leagues' strength: a player
+    moving up is expected to post less, one moving down more. Capped at 100 so
+    a dominant player dropping a level cannot read as superhuman. Same-league
+    moves return the index untouched.
+    """
+    if index is None:
+        return {"value": None, "factor": 1.0, "adjusted": False}
+    factor = strength_for(from_market) / strength_for(to_market)
+    return {
+        "value": round(min(100.0, float(index) * factor), 1),
+        "factor": round(factor, 3),
+        "adjusted": from_market != to_market,
+        "source": "curated",
+    }
