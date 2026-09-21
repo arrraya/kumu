@@ -37,6 +37,25 @@ export const session = {
   clear: () => window.localStorage.removeItem(TOKEN_KEY),
 };
 
+// An expired token does not fail loudly: public endpoints answer it as an
+// anonymous visitor, so the app kept showing "Sign out" while the backend no
+// longer recognised the user and their own players quietly vanished. The
+// response interceptor never caught it, because it only reacts to a 401 and
+// public reads never return one. Checking once on load closes that gap.
+if (typeof window !== 'undefined' && window.localStorage.getItem(TOKEN_KEY)) {
+  fetch(`${API_URL}/api/v1/auth/me`, {
+    headers: { Authorization: `Bearer ${window.localStorage.getItem(TOKEN_KEY)}` },
+  })
+    .then((r) => r.json())
+    .then((d) => {
+      if (!d?.authenticated) {
+        window.localStorage.removeItem(TOKEN_KEY);
+        window.dispatchEvent(new Event('kumu-session-expired'));
+      }
+    })
+    .catch(() => {});
+}
+
 api.interceptors.request.use((config) => {
   const token = session.get();
   if (token) {

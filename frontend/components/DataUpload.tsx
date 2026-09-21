@@ -60,6 +60,14 @@ const DataUpload: React.FC = () => {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
 
+  // The token may be discarded after mount if the backend no longer accepts
+  // it; reflect that instead of showing a sign-out button for a dead session.
+  React.useEffect(() => {
+    const onExpired = () => { setSignedIn(false); setOrg(null) }
+    window.addEventListener('kumu-session-expired', onExpired)
+    return () => window.removeEventListener('kumu-session-expired', onExpired)
+  }, [])
+
   const parsed = useMemo(() => {
     if (!raw.trim()) return null
     try {
