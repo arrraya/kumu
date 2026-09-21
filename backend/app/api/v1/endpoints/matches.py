@@ -98,9 +98,12 @@ async def calculate_matches(
     # two never disagree about what the player is worth.
     from app.services.scouting_report_generator import ScoutingReportGenerator
 
+    from app.core import markets
+
     reference_value = ScoutingReportGenerator()._market_value({
         "market_value": player.market_value,
         "performance_index": player.performance_index,
+        "market_anchor": markets.anchor_for(markets.player_market(db, player.id), db),
     })
 
     matches = []

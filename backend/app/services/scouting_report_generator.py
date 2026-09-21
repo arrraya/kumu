@@ -48,6 +48,19 @@ class ScoutingReportGenerator:
     # marks it as an assumption rather than a fact.
     ASSUMED_AGE = 26
 
+    def _seller_anchor(self, player_data: Dict) -> Dict:
+        """Scale for the fee: the market the player is leaving."""
+        from app.core import markets
+        return player_data.get("market_anchor") or markets.anchor_for(markets.DEFAULT_MARKET)
+
+    def _buyer_anchor(self, team_data: Dict) -> Dict:
+        """Scale for what he produces: the market the buyer plays in."""
+        from app.core import markets
+        if team_data.get("market_anchor"):
+            return team_data["market_anchor"]
+        return markets.anchor_for(
+            markets.market_of(team_data.get("league"), team_data.get("country")))
+
     def _market_value(self, player_data: Dict) -> float:
         """The fee to reason about. Estimated from the index when the client
         supplies none, and flagged as an estimate wherever it is shown."""
@@ -55,7 +68,8 @@ class ScoutingReportGenerator:
         if isinstance(value, (int, float)) and value > 0:
             return float(value)
         index = (player_data.get("performance_index") or {}).get("value") or 50
-        return round(float(index) / 100 * self.ELITE_SPORTING_VALUE * 0.5, 0)
+        anchor = self._seller_anchor(player_data)["value"]
+        return round(float(index) / 100 * anchor * 0.5, 0)
 
     def _has_market_value(self, player_data: Dict) -> bool:
         value = player_data.get("market_value")
@@ -1031,7 +1045,7 @@ class ScoutingReportGenerator:
         # opposite assumptions. Both now share one horizon.
         horizon_years = self.ROI_HORIZON_YEARS
         sporting_value = self._estimate_sporting_value(player_data, team_data)
-        commercial_value = self._estimate_commercial_value(player_data)
+        commercial_value = self._estimate_commercial_value(player_data, team_data)
         resale_value = projections.get("year_3", {}).get("value", initial_investment * 0.7)
 
         annual_contribution = (sporting_value + commercial_value) / 5.0
@@ -1053,6 +1067,20 @@ class ScoutingReportGenerator:
                 "projected_resale_value": resale_value,
             },
             "risk_adjusted_roi": roi * (1 - self._calculate_risk_factor(player_data) / 100),
+            # Which scale each side of the return was measured on. A cross-market
+            # move is expected to show a large return — that is the arbitrage —
+            # so the reader needs to see it came from two markets, and whether
+            # those anchors were measured or are still curation.
+            "market_basis": {
+                "fee_market": self._seller_anchor(player_data).get("market"),
+                "fee_anchor_source": self._seller_anchor(player_data).get("source"),
+                "value_market": self._buyer_anchor(team_data).get("market"),
+                "value_anchor_source": self._buyer_anchor(team_data).get("source"),
+                "cross_market": (
+                    self._seller_anchor(player_data).get("market")
+                    != self._buyer_anchor(team_data).get("market")
+                ),
+            },
         }
 
     def _estimate_sporting_value(self, player_data: Dict, team_data: Dict) -> float:
@@ -1065,7 +1093,7 @@ class ScoutingReportGenerator:
 
         base_sporting_value = (
             performance_index / 100
-        ) * self.ELITE_SPORTING_VALUE * position_importance
+        ) * self._buyer_anchor(team_data)["value"] * position_importance
 
         # Adjust for team needs
         if player_data["position"] in team_data.get("priority_positions", []):
@@ -1073,7 +1101,7 @@ class ScoutingReportGenerator:
 
         return base_sporting_value
 
-    def _estimate_commercial_value(self, player_data: Dict) -> float:
+    def _estimate_commercial_value(self, player_data: Dict, team_data: Dict = None) -> float:
         """Estimate commercial value (merchandise, sponsorship, etc.)"""
         # Simplified calculation
         age_factor = 1.2 if self._age(player_data) < 25 else 1.0 if self._age(player_data) < 30 else 0.7
@@ -1085,7 +1113,11 @@ class ScoutingReportGenerator:
             min(float(index), 100) / 100 if isinstance(index, (int, float)) else 0.5
         )
 
-        return self.ELITE_COMMERCIAL_VALUE * marketability * age_factor
+        # Same proportion to sporting value as at the elite reference, on the
+        # buyer's scale: shirt sales in Santiago are not shirt sales in Madrid.
+        ratio = self.ELITE_COMMERCIAL_VALUE / self.ELITE_SPORTING_VALUE
+        anchor = self._buyer_anchor(team_data or {})["value"]
+        return anchor * ratio * marketability * age_factor
 
     def _calculate_breakeven(
         self, investment: float, sporting_value: float, commercial_value: float

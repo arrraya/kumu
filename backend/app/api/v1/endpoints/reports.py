@@ -115,6 +115,16 @@ async def generate_report(
     }
 
     # Generate report
+    # Resolved here, where the database is at hand: the fee is priced on the
+    # market the player leaves, the value he produces on the buyer's. Measured
+    # anchors are used when a league has enough client data, curation if not.
+    from app.core import markets
+
+    player_data["market_anchor"] = markets.anchor_for(
+        markets.player_market(db, player.id), db)
+    team_data["market_anchor"] = markets.anchor_for(
+        markets.market_of(team.league, team.country), db)
+
     report_data = report_generator.generate_full_report(player_data, team_data, org_ids)
     report_data = _numpy_to_native(report_data)
 
