@@ -67,3 +67,5 @@ backend/.env.backup
 
 # Next.js build output
 frontend/.next/
+
+frontend/tsconfig.tsbuildinfo
