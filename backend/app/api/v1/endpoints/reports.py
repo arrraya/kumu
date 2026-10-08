@@ -126,6 +126,9 @@ async def generate_report(
         markets.market_of(team.league, team.country), db)
 
     report_data = report_generator.generate_full_report(player_data, team_data, org_ids)
+    # Carried through so the PDF can draw the pitch map: the profile lives on
+    # the player, not inside the generated report.
+    report_data["spatial_profile"] = getattr(player, "spatial_profile", None) or {}
     report_data = _numpy_to_native(report_data)
 
     # Save report to database
