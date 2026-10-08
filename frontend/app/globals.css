@@ -1,19 +1,83 @@
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   body {
-    @apply bg-green-50;
+    @apply bg-paper text-ink font-sans antialiased;
+  }
+
+  /* Tabular figures everywhere a number can change: a column of values that
+     shifts width as it updates is harder to compare, which is the whole job. */
+  table, .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  h1, h2, h3 {
+    @apply font-display text-ink;
+    font-weight: 500;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-field ring-offset-2 ring-offset-paper;
   }
 }
 
 @layer components {
-  .btn-primary {
-    @apply px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors;
+  /* PROVENANCE MARKS — the one device that carries Kumü's argument.
+     Every figure states whether it was measured, estimated or decided. This is
+     the product's differentiator, so it belongs in the typography rather than
+     in a footnote nobody reads. A legend explains it once per view. */
+  .is-measured {
+    /* Plain. Measurement is the baseline; it needs no mark. */
   }
-  
+
+  .is-estimated {
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-decoration-color: theme('colors.flag.DEFAULT');
+    text-underline-offset: 0.25em;
+    text-decoration-thickness: 1px;
+  }
+
+  .is-curated {
+    text-decoration: underline;
+    text-decoration-color: theme('colors.rule.strong');
+    text-underline-offset: 0.25em;
+    text-decoration-thickness: 1px;
+  }
+
+  .figure {
+    @apply font-display text-data-lg text-ink tabular;
+  }
+
+  .figure-hero {
+    @apply font-display text-data-xl text-ink tabular;
+  }
+
+  /* A document section, not a card: rules separate, they do not enclose. */
+  .section {
+    @apply border-t border-rule pt-8 mt-10;
+  }
+
+  .panel {
+    @apply bg-paper-sunk border border-rule rounded-sm p-6;
+  }
+
+  .btn-primary {
+    @apply px-4 py-2 bg-field text-white rounded-sm font-medium
+           hover:bg-field-dark transition-colors;
+  }
+
+  .btn-quiet {
+    @apply px-4 py-2 border border-rule rounded-sm text-ink
+           hover:bg-paper-sunk transition-colors;
+  }
+
+  /* Kept so existing markup keeps working while components are migrated. */
   .card {
-    @apply bg-white rounded-lg shadow-md p-6;
+    @apply bg-white border border-rule rounded-sm p-6;
   }
 }
