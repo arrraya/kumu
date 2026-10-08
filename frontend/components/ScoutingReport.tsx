@@ -1021,76 +1021,93 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
 
  return (
    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-     {/* Report Header */}
-     <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-       <div className="flex items-center justify-between">
-         <div>
-           <h1 className="text-2xl font-bold text-gray-900">Scouting Report</h1>
-           <div className="text-gray-600 mt-1 flex flex-wrap items-center gap-2">
-             <span>{report.report_metadata.player_name} →</span>
-             {clubs.length > 0 ? (
-               <select
-                 value={String(report.report_metadata.team_id ?? '')}
-                 onChange={(e) => regenerateForTeam(e.target.value)}
-                 disabled={switchingTeam}
-                 className="border rounded-md px-2 py-1 text-sm bg-white disabled:opacity-60"
-                 title="Run this report against another club"
-               >
-                 {clubs.map((c: any) => (
-                   <option key={c.id} value={String(c.id)}>{c.name}</option>
-                 ))}
-               </select>
-             ) : (
-               <span>{report.report_metadata.team_name}</span>
-             )}
-             {switchingTeam && <span className="text-sm text-gray-400">regenerating…</span>}
-           </div>
-           <p className="text-sm text-gray-500 mt-1">
-             Generated: {new Date(report.report_metadata.generated_date).toLocaleDateString()}
-           </p>
-           {report.report_metadata.data_coverage && (() => {
-             const cov = report.report_metadata.data_coverage;
-             const pct = cov.coverage_pct;
-             const tone =
-               pct >= 75
-                 ? "bg-green-50 text-green-700 border-green-200"
-                 : pct >= 40
-                 ? "bg-yellow-50 text-yellow-700 border-yellow-200"
-                 : "bg-red-50 text-red-700 border-red-200";
-             const title =
-               cov.missing_fields.length > 0
-                 ? `Missing: ${cov.missing_fields.join(", ")}`
-                 : "All key data sources available";
-             return (
-               <div
-                 title={title}
-                 className={`inline-flex items-center gap-2 mt-3 px-3 py-1 rounded-full border text-xs font-medium ${tone}`}
-               >
-                 <span className="w-2 h-2 rounded-full bg-current opacity-70" />
-                 Data coverage: {pct}% ({cov.available_fields}/{cov.total_fields} sources)
-               </div>
-             );
-           })()}
-           {/* Separates what was measured from what was assumed, so a reader
-               does not take an estimate for a reading. */}
-           <p className="text-xs text-gray-500 mt-2 max-w-2xl leading-snug">
-             Metrics come from match events. Age is not available in this source
-             and is held at 26 for everyone; market values are estimated by Kumu
-             from performance. Club playing styles and expected levels are
-             declared curation, and roles that rely on aerial duels or blocks
-             score low because the source does not record them.
-           </p>
-         </div>
-         <button
-           onClick={handleDownloadPdf}
-           disabled={downloadingPdf}
-           className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-         >
-           <Download className="w-4 h-4" />
-           {downloadingPdf ? "Generating..." : "Export PDF"}
-         </button>
-       </div>
-     </div>
+     {/* Masthead. A sporting director opens this to answer one question —
+        does this player fit, and can I defend saying so — so the name, the
+        destination and the verdict come first, and the reading rules sit
+        beside them rather than in a footnote nobody gets to. */}
+    <header className="mb-10">
+      <div className="flex flex-wrap items-start justify-between gap-6 pb-6 border-b border-rule">
+        <div className="min-w-0">
+          <h1 className="font-display text-4xl text-ink leading-tight">
+            {report.report_metadata.player_name}
+          </h1>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-ink-soft">
+            <span className="text-sm">Assessed for</span>
+            {clubs.length > 0 ? (
+              <select
+                value={String(report.report_metadata.team_id ?? '')}
+                onChange={(e) => regenerateForTeam(e.target.value)}
+                disabled={switchingTeam}
+                className="border border-rule rounded-sm px-2 py-1 text-sm bg-white
+                           text-ink disabled:opacity-60"
+                title="Run this report against another club"
+              >
+                {clubs.map((c: any) => (
+                  <option key={c.id} value={String(c.id)}>{c.name}</option>
+                ))}
+              </select>
+            ) : (
+              <span className="text-ink">{report.report_metadata.team_name}</span>
+            )}
+            {switchingTeam && (
+              <span className="text-sm text-ink-faint">regenerating…</span>
+            )}
+          </div>
+          <p className="mt-2 text-sm text-ink-faint">
+            {new Date(report.report_metadata.generated_date).toLocaleDateString()}
+            {report.report_metadata.data_coverage &&
+              ` · ${report.report_metadata.data_coverage.available_fields} of ${report.report_metadata.data_coverage.total_fields} data sources available`}
+          </p>
+        </div>
+
+        <div className="flex items-start gap-10 shrink-0">
+          <div>
+            <div className="figure">
+              {report.executive_summary?.match_score != null
+                ? `${Number(report.executive_summary.match_score).toFixed(1)}%`
+                : '—'}
+            </div>
+            <div className="text-xs text-ink-faint mt-1">Match compatibility</div>
+            {report.executive_summary?.recommendation && (
+              <div className="text-xs text-field font-medium mt-0.5">
+                {report.executive_summary.recommendation.toLowerCase()}
+              </div>
+            )}
+          </div>
+          <div>
+            <div className="figure">
+              {report.executive_summary?.overall_percentile != null
+                ? report.executive_summary.overall_percentile
+                : '—'}
+            </div>
+            <div className="text-xs text-ink-faint mt-1">League percentile</div>
+          </div>
+          <button
+            onClick={handleDownloadPdf}
+            disabled={downloadingPdf}
+            className="btn-quiet flex items-center gap-2 disabled:opacity-60
+                       disabled:cursor-not-allowed mt-2"
+          >
+            <Download className="w-4 h-4" />
+            {downloadingPdf ? "Generating…" : "Export PDF"}
+          </button>
+        </div>
+      </div>
+
+      {/* The legend for the marks used throughout. Stated once, here, so the
+          figures below can carry their origin without repeating a caveat. */}
+      <div className="mt-5 flex flex-wrap gap-x-8 gap-y-2 text-xs text-ink-soft">
+        <span><span className="is-measured font-medium">Measured</span> from match events</span>
+        <span><span className="is-estimated font-medium">Estimated</span> by Kumü where the source carries nothing</span>
+        <span><span className="is-curated font-medium">Decided</span> in advance and replaced as data arrives</span>
+      </div>
+      <p className="mt-3 max-w-read text-sm text-ink-soft leading-relaxed">
+        Age is not in this data source and is held constant for everyone. Market
+        values are estimated from performance. Club playing styles and expected
+        levels are declared judgements, and roles that rely on aerial duels or
+        blocks score low because the source does not record them.
+      </p>
+    </header>
 
      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
        {/* Sidebar Navigation */}
