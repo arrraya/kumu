@@ -69,3 +69,4 @@ backend/.env.backup
 frontend/.next/
 
 frontend/tsconfig.tsbuildinfo
+
