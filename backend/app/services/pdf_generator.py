@@ -624,6 +624,12 @@ class PDFReportGenerator:
         if key_findings:
             elements.append(Paragraph("<b>Key Findings:</b>", self.styles["SubSection"]))
             for finding in key_findings:
+                # Findings carry their origin now; older reports are strings.
+                if isinstance(finding, dict):
+                    origen = finding.get("origin")
+                    finding = finding.get("text", "")
+                    if origen in ("estimated", "decided"):
+                        finding = f"{finding} <i>({origen})</i>"
                 elements.append(Paragraph(f"• {finding}", self.styles["BodyText"]))
             elements.append(Spacer(1, 0.3 * inch))
 

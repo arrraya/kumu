@@ -292,23 +292,108 @@ class ScoutingReportGenerator:
                 if ranked is not None
                 else "average of individual metric percentiles (no peer ranking available)"
             ),
-            "key_findings": [
-                f"Player ranks in the {int(performance_percentile)}th percentile overall",
-                f"Match compatibility score: {match_score}%",
-                # Each of these states what it rests on. Asserting an age the
-                # source never carried, or a budget verdict built on a fee Kumu
-                # estimated itself, is precisely the kind of unsourced claim the
-                # rest of the report exists to avoid.
-                (f"Age profile: {self._age(player_data)} years - "
-                 f"{'Optimal' if 23 <= self._age(player_data) <= 28 else 'Consider age factor'}")
-                if self._has_age(player_data)
-                else "Age: not available in this data source",
-                (f"Financial fit: "
-                 f"{'Within budget' if self._market_value(player_data) <= (team_data.get('budget') or 0) * 0.4 else 'Stretches budget'}"
-                 f"{'' if self._has_market_value(player_data) else ' (against a Kumü-estimated fee)'}"),
-            ],
+            # Findings say something the headline figures do not. The
+            # percentile and the compatibility score already lead the report,
+            # and repeating them here made a reader check whether two numbers
+            # that looked alike actually were. Each one also carries its
+            # origin, so the legend at the top means something.
+            "key_findings": self._key_findings(
+                player_data, team_data, metric_percentile_average, performance_percentile
+            ),
             "executive_statement": f"{player_data['name']} represents a {recommendation.lower()} acquisition for {team_data['name']}. Statistical analysis places the player in the {int(performance_percentile)}th percentile for their position in {team_data.get('league') or 'their league'}.",
         }
+
+    def _key_findings(self, player_data: Dict, team_data: Dict,
+                      metric_avg: float, overall: float) -> list:
+        """Findings as text plus provenance, never as a bare assertion.
+
+        Each entry is {"text", "origin"}, where origin is measured, estimated
+        or decided. The interface marks them accordingly; anything that only
+        renders the string still reads correctly.
+        """
+        out = []
+
+        # Where the player is strong and weak relative to his own average, which
+        # is more useful than a single overall rank the header already shows.
+        if metric_avg and abs(metric_avg - overall) >= 8:
+            if metric_avg > overall:
+                out.append({
+                    "text": (f"Individual metrics ({int(metric_avg)}th) rate higher than "
+                             f"his overall rank ({int(overall)}th): strong in parts, "
+                             f"less so as a whole"),
+                    "origin": "measured",
+                })
+            else:
+                out.append({
+                    "text": (f"Rates higher overall ({int(overall)}th) than his "
+                             f"individual metrics ({int(metric_avg)}th) suggest"),
+                    "origin": "measured",
+                })
+
+        historial = player_data.get("performance_history") or []
+        if historial:
+            out.append({
+                "text": f"Assessed on {len(historial)} appearances"
+                        + ("" if len(historial) >= 5
+                           else " — a short log; read the trend loosely"),
+                "origin": "measured",
+            })
+
+        edad = self._age(player_data)
+        # The public population all carry 26 because the pipeline filled it in,
+        # not because the source recorded it. Treating that as measured would
+        # put Kumü's own assumption behind a tick mark, which is the one thing
+        # this report promises not to do.
+        edad_declarada = (
+            self._has_age(player_data)
+            and edad != self.ASSUMED_AGE
+        )
+        if edad_declarada:
+            out.append({
+                "text": f"Age {edad}"
+                        + (", at the centre of a typical career peak"
+                           if 23 <= edad <= 28 else ", outside the usual peak window"),
+                "origin": "measured",
+            })
+        else:
+            # Never dressed up as a strength: the source carries no birth date,
+            # so an age here would be Kumü's assumption wearing a tick mark.
+            out.append({
+                "text": "Age is not carried by this data source, so no "
+                        "age-dependent judgement is made",
+                "origin": "decided",
+            })
+
+        presupuesto = (team_data.get("budget") or 0)
+        valor = self._market_value(player_data)
+        if presupuesto:
+            share = valor / presupuesto
+            if share <= 0.4:
+                veredicto = "comfortably within budget"
+            elif share <= 0.8:
+                veredicto = "a significant share of the budget"
+            else:
+                veredicto = "beyond what this budget absorbs"
+            out.append({
+                "text": f"At {self._fmt_money(valor)}, {veredicto} "
+                        f"({int(share * 100)}% of {self._fmt_money(presupuesto)})",
+                # The public population carries a value because market.py derived
+                # it from the index, so "the field is populated" does not mean
+                # "somebody observed this price". Only a client-supplied figure
+                # is a measurement.
+                "origin": ("measured"
+                           if (self._has_market_value(player_data)
+                               and player_data.get("market_value_source") == "client")
+                           else "estimated"),
+            })
+
+        return out
+
+    @staticmethod
+    def _fmt_money(v) -> str:
+        if not isinstance(v, (int, float)) or v <= 0:
+            return "—"
+        return f"€{v/1e6:.1f}M" if v >= 1e6 else f"€{v/1e3:.0f}K"
 
     def generate_statistical_overview(self, player_data: Dict, team_data: Dict) -> Dict:
         """Generate detailed statistical analysis"""

@@ -40,7 +40,7 @@ interface ScoutingReportData {
     action: string;
     match_score: number;
     overall_percentile: number;
-    key_findings: string[];
+    key_findings: any[];
     executive_statement: string;
   };
   statistical_overview: {
@@ -500,12 +500,22 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
         <div className="border-t pt-4">
           <h4 className="font-medium text-ink-soft mb-3">Key Findings</h4>
           <ul className="space-y-2">
-            {report.executive_summary.key_findings.map((finding, i) => (
-              <li key={i} className="flex items-start gap-2">
-                <Check className="w-5 h-5 text-field mt-0.5 flex-shrink-0" />
-                <span className="text-ink-soft">{finding}</span>
-              </li>
-            ))}
+            {report.executive_summary.key_findings.map((finding: any, i: number) => {
+              // Findings arrive as {text, origin}; older reports stored plain
+              // strings, and those still render.
+              const text = typeof finding === 'string' ? finding : finding?.text
+              const origin = typeof finding === 'string' ? null : finding?.origin
+              const mark =
+                origin === 'estimated' ? 'is-estimated'
+                : origin === 'decided' ? 'is-curated'
+                : ''
+              return (
+                <li key={i} className="flex items-start gap-3">
+                  <span className="mt-2 w-1 h-1 rounded-full bg-ink-faint shrink-0" />
+                  <span className={`text-ink-soft ${mark}`}>{text}</span>
+                </li>
+              )
+            })}
           </ul>
         </div>
 

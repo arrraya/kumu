@@ -18,7 +18,9 @@ class ExecutiveSummary(BaseModel):
     action: str
     match_score: float
     overall_percentile: int
-    key_findings: List[str]
+    # Findings carry their provenance now ({text, origin}); reports
+    # stored before that are plain strings and must still deserialise.
+    key_findings: List[Any]
     executive_statement: str
     # Reported alongside the ranked percentile so the two are not confused
     metric_percentile_average: Optional[int] = None
