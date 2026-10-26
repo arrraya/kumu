@@ -388,8 +388,8 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
 
   const RecommendationBadge = ({ recommendation }: { recommendation: string }) => {
     const getColor = () => {
-      if (recommendation.includes('STRONGLY')) return 'bg-green-100 text-green-800 border-green-200';
-      if (recommendation.includes('RECOMMENDED')) return 'bg-blue-100 text-blue-800 border-blue-200';
+      if (recommendation.includes('STRONGLY')) return 'bg-green-100 text-green-800 border-rule';
+      if (recommendation.includes('RECOMMENDED')) return 'bg-field-wash text-ink border-rule';
       if (recommendation.includes('CONDITIONALLY')) return 'bg-yellow-100 text-yellow-800 border-yellow-200';
       return 'bg-red-100 text-red-800 border-red-200';
     };
@@ -404,14 +404,14 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
   const PercentileBar = ({ percentile, label }: { percentile: number; label: string }) => (
     <div className="mb-4">
       <div className="flex justify-between text-sm mb-1">
-        <span className="text-gray-600">{label}</span>
+        <span className="text-ink-soft">{label}</span>
         <span className="font-medium">{percentile}th percentile</span>
       </div>
       <div className="w-full bg-gray-200 rounded-full h-2">
         <div
           className={`h-2 rounded-full transition-all duration-500 ${
             percentile >= 80 ? 'bg-green-600' :
-            percentile >= 60 ? 'bg-blue-600' :
+            percentile >= 60 ? 'bg-field' :
             percentile >= 40 ? 'bg-yellow-600' : 'bg-red-600'
           }`}
           style={{ width: `${percentile}%` }}
@@ -459,7 +459,7 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
         </svg>
         <div className="text-center mt-2">
           <div className="text-lg font-semibold">{level}</div>
-          <div className="text-sm text-gray-600">{score.toFixed(1)}% risk</div>
+          <div className="text-sm text-ink-soft">{score.toFixed(1)}% risk</div>
         </div>
       </div>
     );
@@ -467,10 +467,10 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-green-50 flex items-center justify-center">
+      <div className="min-h-screen bg-field-wash flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading scouting report...</p>
+          <p className="mt-4 text-ink-soft">Loading scouting report...</p>
         </div>
       </div>
     );
@@ -481,8 +481,8 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="bg-white p-12 rounded-lg shadow-md text-center">
           <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-600">No report available</h3>
-          <p className="text-sm text-gray-500 mt-2">
+          <h3 className="text-lg font-medium text-ink-soft">No report available</h3>
+          <p className="text-sm text-ink-faint mt-2">
             Select a player and team match to generate a scouting report
           </p>
         </div>
@@ -494,38 +494,26 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
     <div className="space-y-6">
       <div className="bg-white rounded-lg shadow-md p-6">
         <div className="flex items-center justify-between mb-6">
-          <h3 className="text-xl font-semibold">Match Assessment</h3>
-          <RecommendationBadge recommendation={report.executive_summary.recommendation} />
+          <h3 className="text-xl font-semibold">Assessment</h3>
         </div>
         
-        <div className="grid grid-cols-2 gap-6 mb-6">
-          <div className="text-center p-4 bg-blue-50 rounded-lg">
-            <div className="text-3xl font-bold text-blue-600">{report.executive_summary.match_score}%</div>
-            <div className="text-sm text-gray-600 mt-1">Match Compatibility</div>
-          </div>
-          <div className="text-center p-4 bg-green-50 rounded-lg">
-            <div className="text-3xl font-bold text-green-600">{report.executive_summary.overall_percentile}th</div>
-            <div className="text-sm text-gray-600 mt-1">League Percentile</div>
-          </div>
-        </div>
-
         <div className="border-t pt-4">
-          <h4 className="font-medium text-gray-700 mb-3">Key Findings</h4>
+          <h4 className="font-medium text-ink-soft mb-3">Key Findings</h4>
           <ul className="space-y-2">
             {report.executive_summary.key_findings.map((finding, i) => (
               <li key={i} className="flex items-start gap-2">
-                <Check className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
-                <span className="text-gray-600">{finding}</span>
+                <Check className="w-5 h-5 text-field mt-0.5 flex-shrink-0" />
+                <span className="text-ink-soft">{finding}</span>
               </li>
             ))}
           </ul>
         </div>
 
         <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-          <p className="text-sm text-gray-700 italic">"{report.executive_summary.executive_statement}"</p>
+          <p className="text-sm text-ink-soft italic">"{report.executive_summary.executive_statement}"</p>
         </div>
 
-        <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+        <div className="mt-6 p-4 bg-field-wash border border-rule rounded-lg">
           <div className="flex items-center gap-2 text-green-800">
             <AlertCircle className="w-5 h-5" />
             <span className="font-medium">Recommended Action:</span>
@@ -542,7 +530,7 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
         <h3 className="text-xl font-semibold mb-6">Performance Metrics</h3>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <div className="bg-green-50 p-4 rounded-lg">
+          <div className="bg-field-wash p-4 rounded-lg">
             <h4 className="font-medium text-green-800 mb-3">Statistical Strengths</h4>
             <ul className="space-y-2">
               {report.statistical_overview.statistical_strengths.map((strength, i) => (
@@ -569,14 +557,14 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
 
         <div className="grid grid-cols-2 gap-4">
           <div className="bg-gray-50 p-4 rounded-lg">
-            <div className="text-sm text-gray-600">Consistency</div>
+            <div className="text-sm text-ink-soft">Consistency</div>
             <div className="text-lg font-semibold">{report.statistical_overview.consistency_rating.rating}</div>
-            <div className="text-sm text-gray-500">Score: {report.statistical_overview.consistency_rating.score}/100</div>
+            <div className="text-sm text-ink-faint">Score: {report.statistical_overview.consistency_rating.score}/100</div>
           </div>
           <div className="bg-gray-50 p-4 rounded-lg">
-            <div className="text-sm text-gray-600">Form Trajectory</div>
+            <div className="text-sm text-ink-soft">Form Trajectory</div>
             <div className="text-lg font-semibold">{report.statistical_overview.form_trajectory.trend}</div>
-            <div className="text-sm text-gray-500">Direction: {report.statistical_overview.form_trajectory.direction}</div>
+            <div className="text-sm text-ink-faint">Direction: {report.statistical_overview.form_trajectory.direction}</div>
           </div>
         </div>
       </div>
@@ -589,30 +577,30 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
         <h3 className="text-xl font-semibold mb-6">Tactical Fit Analysis</h3>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-blue-50 p-6 rounded-lg">
-            <h4 className="font-medium text-blue-800 mb-4">Formation Compatibility</h4>
+          <div className="bg-field-wash p-6 rounded-lg">
+            <h4 className="font-medium text-ink mb-4">Formation Compatibility</h4>
             <div className="text-center">
-              <div className="text-4xl font-bold text-blue-600">{report.tactical_analysis.formation_compatibility.score}%</div>
-              <div className="text-lg text-blue-700 mt-2">{report.tactical_analysis.formation_compatibility.fit}</div>
-              <p className="text-sm text-blue-600 mt-2">{report.tactical_analysis.formation_compatibility.note}</p>
+              <div className="text-4xl font-bold text-field">{report.tactical_analysis.formation_compatibility.score}%</div>
+              <div className="text-lg text-field-dark mt-2">{report.tactical_analysis.formation_compatibility.fit}</div>
+              <p className="text-sm text-field mt-2">{report.tactical_analysis.formation_compatibility.note}</p>
             </div>
           </div>
           
-          <div className="bg-green-50 p-6 rounded-lg">
+          <div className="bg-field-wash p-6 rounded-lg">
             <h4 className="font-medium text-green-800 mb-4">Style Compatibility</h4>
             <div className="text-center">
-              <div className="text-4xl font-bold text-green-600">{report.tactical_analysis.style_compatibility.compatibility_score}%</div>
+              <div className="text-4xl font-bold text-field">{report.tactical_analysis.style_compatibility.compatibility_score}%</div>
               <div className="text-lg text-green-700 mt-2">{report.tactical_analysis.style_compatibility.player_style}</div>
             </div>
           </div>
         </div>
 
         <div className="mt-6">
-          <h4 className="font-medium text-gray-700 mb-3">Tactical Notes</h4>
+          <h4 className="font-medium text-ink-soft mb-3">Tactical Notes</h4>
           <ul className="space-y-2">
             {report.tactical_analysis.style_compatibility.notes.map((note, i) => (
-              <li key={i} className="flex items-start gap-2 text-gray-600">
-                <Check className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
+              <li key={i} className="flex items-start gap-2 text-ink-soft">
+                <Check className="w-5 h-5 text-field mt-0.5 flex-shrink-0" />
                 <span>{note}</span>
               </li>
             ))}
@@ -665,7 +653,7 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <h4 className="font-medium text-gray-700 mb-4">Athletic Attributes</h4>
+              <h4 className="font-medium text-ink-soft mb-4">Athletic Attributes</h4>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={athleticData}>
                   <CartesianGrid strokeDasharray="3 3" />
@@ -686,15 +674,15 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
             </div>
             
             <div>
-              <h4 className="font-medium text-gray-700 mb-4">Age & Development</h4>
-              <div className="bg-blue-50 p-6 rounded-lg">
+              <h4 className="font-medium text-ink-soft mb-4">Age & Development</h4>
+              <div className="bg-field-wash p-6 rounded-lg">
                 <div className="text-center">
-                  <div className="text-3xl font-bold text-blue-600">{report.physical_profile.physical_age_analysis.current_age ?? "n/a"}</div>
-                  <div className="text-sm text-gray-600 mt-1">years old</div>
+                  <div className="text-3xl font-bold text-field">{report.physical_profile.physical_age_analysis.current_age ?? "n/a"}</div>
+                  <div className="text-sm text-ink-soft mt-1">years old</div>
                 </div>
                 <div className="mt-4 text-center">
-                  <p className="text-blue-700 font-medium">{report.physical_profile.physical_age_analysis.development_stage}</p>
-                  <p className="text-sm text-blue-600 mt-2">
+                  <p className="text-field-dark font-medium">{report.physical_profile.physical_age_analysis.development_stage}</p>
+                  <p className="text-sm text-field mt-2">
                     {report.physical_profile.physical_age_analysis.peak_years_remaining} peak years remaining
                   </p>
                 </div>
@@ -740,30 +728,30 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
           <h3 className="text-xl font-semibold mb-6">Market Value Analysis</h3>
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div className="bg-blue-50 p-4 rounded-lg text-center">
-              <div className="text-2xl font-bold text-blue-600">{formatCurrency(report.market_analysis.current_market_value)}</div>
-              <div className="text-sm text-gray-600 mt-1">Current Value</div>
+            <div className="bg-field-wash p-4 rounded-lg text-center">
+              <div className="text-2xl font-bold text-field">{formatCurrency(report.market_analysis.current_market_value)}</div>
+              <div className="text-sm text-ink-soft mt-1">Current Value</div>
             </div>
-            <div className="bg-green-50 p-4 rounded-lg text-center">
-              <div className="text-2xl font-bold text-green-600">{report.market_analysis.value_assessment.assessment}</div>
-              <div className="text-sm text-gray-600 mt-1">Value Assessment</div>
+            <div className="bg-field-wash p-4 rounded-lg text-center">
+              <div className="text-2xl font-bold text-field">{report.market_analysis.value_assessment.assessment}</div>
+              <div className="text-sm text-ink-soft mt-1">Value Assessment</div>
               {/* The verdict compares a Kumu estimate against other Kumu
                   estimates — no observed fee is involved. Saying so is the
                   difference between an analytical construct and a claim about
                   the transfer market. */}
-              <div className="text-xs text-gray-500 mt-2 leading-snug">
+              <div className="text-xs text-ink-faint mt-2 leading-snug">
                 Kumu estimate vs Kumu-valued peers, not observed transfer fees
               </div>
             </div>
             <div className="bg-purple-50 p-4 rounded-lg text-center">
               <div className="text-2xl font-bold text-purple-600">{formatPercentage(report.market_analysis.roi_analysis.roi_percentage)}</div>
-              <div className="text-sm text-gray-600 mt-1">Projected ROI</div>
+              <div className="text-sm text-ink-soft mt-1">Projected ROI</div>
             </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div>
-              <h4 className="font-medium text-gray-700 mb-4">Value Projections</h4>
+              <h4 className="font-medium text-ink-soft mb-4">Value Projections</h4>
               <ResponsiveContainer width="100%" height={250}>
                 <LineChart data={projectionData}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -776,18 +764,18 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
            </div>
            
            <div>
-             <h4 className="font-medium text-gray-700 mb-4">Financial Assessment</h4>
+             <h4 className="font-medium text-ink-soft mb-4">Financial Assessment</h4>
              <div className="space-y-3">
                <div className="flex justify-between items-center p-3 bg-gray-50 rounded">
-                 <span className="text-gray-600 mr-4">vs Comparable Transfers</span>
+                 <span className="text-ink-soft mr-4">vs Comparable Transfers</span>
                  <span className="font-medium">{report.market_analysis.value_assessment.vs_comparables}</span>
                </div>
                <div className="flex justify-between items-center p-3 bg-gray-50 rounded">
-                 <span className="text-gray-600">Breakeven Period</span>
+                 <span className="text-ink-soft">Breakeven Period</span>
                  <span className="font-medium">{report.market_analysis.roi_analysis.breakeven_period}</span>
                </div>
                <div className="flex justify-between items-center p-3 bg-gray-50 rounded">
-                 <span className="text-gray-600">Risk-Adjusted ROI</span>
+                 <span className="text-ink-soft">Risk-Adjusted ROI</span>
                  <span className="font-medium">{formatPercentage(report.market_analysis.roi_analysis.risk_adjusted_roi)}</span>
                </div>
              </div>
@@ -810,27 +798,27 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
        <h3 className="text-xl font-semibold mb-6">Comparative Analysis</h3>
        
        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-         <div className="bg-blue-50 p-6 rounded-lg">
-           <h4 className="font-medium text-blue-800 mb-4">Squad Comparison</h4>
+         <div className="bg-field-wash p-6 rounded-lg">
+           <h4 className="font-medium text-ink mb-4">Squad Comparison</h4>
            <div className="text-center mb-4">
-             <div className="text-3xl font-bold text-blue-600">{report.comparison_analysis.squad_comparison.performance_improvement}</div>
-             <div className="text-sm text-gray-600 mt-1">Performance Improvement</div>
+             <div className="text-3xl font-bold text-field">{report.comparison_analysis.squad_comparison.performance_improvement}</div>
+             <div className="text-sm text-ink-soft mt-1">Performance Improvement</div>
            </div>
            <div className="bg-white p-3 rounded text-center">
-             <span className="text-blue-700 font-medium">{report.comparison_analysis.squad_comparison.immediate_impact}</span>
+             <span className="text-field-dark font-medium">{report.comparison_analysis.squad_comparison.immediate_impact}</span>
            </div>
           {/* Which group the percentage is measured against: the club's own
               squad when it has one, otherwise database peers. Without this the
               number is ambiguous. */}
           {(report.comparison_analysis.squad_comparison as any).basis && (
-            <p className="text-xs text-gray-500 mt-3 text-center italic">
+            <p className="text-xs text-ink-faint mt-3 text-center italic">
               {(report.comparison_analysis.squad_comparison as any).basis}
             </p>
           )}
           {((report.comparison_analysis.squad_comparison as any).current_options || []).length > 0 && (
             <div className="mt-3 space-y-1">
               {((report.comparison_analysis.squad_comparison as any).current_options || []).map((peer: any) => (
-                <div key={peer.name} className="flex justify-between text-xs text-gray-600">
+                <div key={peer.name} className="flex justify-between text-xs text-ink-soft">
                   <span>{peer.name}</span>
                   <span className="font-medium">{peer.performance_index}</span>
                 </div>
@@ -839,11 +827,11 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
           )}
          </div>
          
-         <div className="bg-green-50 p-6 rounded-lg">
+         <div className="bg-field-wash p-6 rounded-lg">
            <h4 className="font-medium text-green-800 mb-4">League Standing</h4>
            <div className="text-center mb-4">
-             <div className="text-3xl font-bold text-green-600">{report.comparison_analysis.league_comparison.league_percentile}th</div>
-             <div className="text-sm text-gray-600 mt-1">League Percentile</div>
+             <div className="text-3xl font-bold text-field">{report.comparison_analysis.league_comparison.league_percentile}th</div>
+             <div className="text-sm text-ink-soft mt-1">League Percentile</div>
            </div>
            <div className="bg-white p-3 rounded text-center">
              <span className="text-green-700 font-medium">{report.comparison_analysis.league_comparison.statistical_rank}</span>
@@ -853,10 +841,10 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
 
        <div className="mt-6 p-4 bg-gray-50 rounded-lg">
          <div className="flex items-center gap-2 mb-2">
-           <Target className="w-5 h-5 text-gray-700" />
-           <h4 className="font-medium text-gray-700">Overall Assessment</h4>
+           <Target className="w-5 h-5 text-ink-soft" />
+           <h4 className="font-medium text-ink-soft">Overall Assessment</h4>
          </div>
-         <p className="text-gray-600">{report.comparison_analysis.upgrade_assessment}</p>
+         <p className="text-ink-soft">{report.comparison_analysis.upgrade_assessment}</p>
        </div>
      </div>
    </div>
@@ -881,13 +869,13 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
            {riskData.map((risk, i) => (
              <div key={i} className={`p-4 rounded-lg ${
-               risk.level === 'Low' ? 'bg-green-50' :
+               risk.level === 'Low' ? 'bg-field-wash' :
                risk.level === 'Moderate' ? 'bg-yellow-50' :
                'bg-red-50'
              }`}>
-               <div className="text-sm font-medium capitalize text-gray-700">{risk.type}</div>
+               <div className="text-sm font-medium capitalize text-ink-soft">{risk.type}</div>
                <div className={`text-lg font-bold mt-1 ${
-                 risk.level === 'Low' ? 'text-green-600' :
+                 risk.level === 'Low' ? 'text-field' :
                  risk.level === 'Moderate' ? 'text-yellow-600' :
                  'text-red-600'
                }`}>
@@ -905,11 +893,11 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
          </div>
 
          {report.risk_assessment.mitigation_plan.length > 0 && (
-           <div className="bg-blue-50 p-4 rounded-lg">
-             <h4 className="font-medium text-blue-800 mb-3">Risk Mitigation Plan</h4>
+           <div className="bg-field-wash p-4 rounded-lg">
+             <h4 className="font-medium text-ink mb-3">Risk Mitigation Plan</h4>
              <ul className="space-y-2">
                {report.risk_assessment.mitigation_plan.map((action, i) => (
-                 <li key={i} className="flex items-start gap-2 text-blue-700">
+                 <li key={i} className="flex items-start gap-2 text-field-dark">
                    <Shield className="w-4 h-4 mt-0.5 flex-shrink-0" />
                    <span className="text-sm">{action}</span>
                  </li>
@@ -927,66 +915,66 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
      <div className="bg-white rounded-lg shadow-md p-6">
        <h3 className="text-xl font-semibold mb-6">Negotiation Strategy</h3>
        
-       <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+       <div className="mb-6 p-4 bg-field-wash rounded-lg">
          <div className="flex items-center justify-between mb-2">
-           <span className="font-medium text-blue-800">Negotiation Position:</span>
-           <span className="text-lg font-bold text-blue-600">{report.negotiation_strategy.negotiation_position.strength}</span>
+           <span className="font-medium text-ink">Negotiation Position:</span>
+           <span className="text-lg font-bold text-field">{report.negotiation_strategy.negotiation_position.strength}</span>
          </div>
-         <div className="text-sm text-blue-700">
+         <div className="text-sm text-field-dark">
            Score: {report.negotiation_strategy.negotiation_position.score}/100
          </div>
        </div>
 
        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-         <div className="bg-green-50 p-4 rounded-lg text-center">
-           <div className="text-sm text-gray-600">Opening Offer</div>
-           <div className="text-2xl font-bold text-green-600 mt-1">{formatCurrency(report.negotiation_strategy.offer_strategy.opening_offer)}</div>
+         <div className="bg-field-wash p-4 rounded-lg text-center">
+           <div className="text-sm text-ink-soft">Opening Offer</div>
+           <div className="text-2xl font-bold text-field mt-1">{formatCurrency(report.negotiation_strategy.offer_strategy.opening_offer)}</div>
          </div>
          <div className="bg-yellow-50 p-4 rounded-lg text-center">
-           <div className="text-sm text-gray-600">Maximum Offer</div>
+           <div className="text-sm text-ink-soft">Maximum Offer</div>
            <div className="text-2xl font-bold text-yellow-600 mt-1">{formatCurrency(report.negotiation_strategy.offer_strategy.maximum_offer)}</div>
          </div>
          <div className="bg-red-50 p-4 rounded-lg text-center">
-           <div className="text-sm text-gray-600">Walk-away Price</div>
+           <div className="text-sm text-ink-soft">Walk-away Price</div>
            <div className="text-2xl font-bold text-red-600 mt-1">{formatCurrency(report.negotiation_strategy.offer_strategy.walk_away_price)}</div>
          </div>
        </div>
 
        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
          <div>
-           <h4 className="font-medium text-gray-700 mb-3">Timeline</h4>
+           <h4 className="font-medium text-ink-soft mb-3">Timeline</h4>
            <div className="space-y-2">
              <div className="flex items-center gap-3">
-               <Calendar className="w-5 h-5 text-gray-500" />
+               <Calendar className="w-5 h-5 text-ink-faint" />
                <div className="flex-1">
                  <div className="text-sm font-medium">Initial Contact</div>
-                 <div className="text-sm text-gray-600">{report.negotiation_strategy.timeline.initial_contact}</div>
+                 <div className="text-sm text-ink-soft">{report.negotiation_strategy.timeline.initial_contact}</div>
                </div>
              </div>
              <div className="flex items-center gap-3">
-               <Calendar className="w-5 h-5 text-gray-500" />
+               <Calendar className="w-5 h-5 text-ink-faint" />
                <div className="flex-1">
                  <div className="text-sm font-medium">First Offer</div>
-                 <div className="text-sm text-gray-600">{report.negotiation_strategy.timeline.first_offer}</div>
+                 <div className="text-sm text-ink-soft">{report.negotiation_strategy.timeline.first_offer}</div>
                </div>
              </div>
              <div className="flex items-center gap-3">
-               <Calendar className="w-5 h-5 text-gray-500" />
+               <Calendar className="w-5 h-5 text-ink-faint" />
                <div className="flex-1">
                  <div className="text-sm font-medium">Negotiation Window</div>
-                 <div className="text-sm text-gray-600">{report.negotiation_strategy.timeline.negotiation_window}</div>
+                 <div className="text-sm text-ink-soft">{report.negotiation_strategy.timeline.negotiation_window}</div>
                </div>
              </div>
            </div>
          </div>
          
          <div>
-           <h4 className="font-medium text-gray-700 mb-3">Key Tactics</h4>
+           <h4 className="font-medium text-ink-soft mb-3">Key Tactics</h4>
            <ul className="space-y-2">
              {report.negotiation_strategy.tactics.map((tactic, i) => (
                <li key={i} className="flex items-start gap-2">
-                 <ChevronRight className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
-                 <span className="text-sm text-gray-600">{tactic}</span>
+                 <ChevronRight className="w-4 h-4 text-ink-faint mt-0.5 flex-shrink-0" />
+                 <span className="text-sm text-ink-soft">{tactic}</span>
                </li>
              ))}
            </ul>
@@ -996,8 +984,8 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
        <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
          {report.negotiation_strategy.negotiation_position.factors.map((factor, i) => (
            <div key={i} className="flex items-center gap-2 p-3 bg-gray-50 rounded">
-             <Check className="w-5 h-5 text-green-600 flex-shrink-0" />
-             <span className="text-sm text-gray-700">{factor}</span>
+             <Check className="w-5 h-5 text-field flex-shrink-0" />
+             <span className="text-sm text-ink-soft">{factor}</span>
            </div>
          ))}
        </div>
@@ -1121,8 +1109,8 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
                  onClick={() => setActiveSection(section.id)}
                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors mb-2 ${
                    activeSection === section.id
-                     ? 'bg-green-50 text-green-700'
-                     : 'text-gray-700 hover:bg-gray-50'
+                     ? 'bg-field-wash text-green-700'
+                     : 'text-ink-soft hover:bg-gray-50'
                  }`}
                >
                  <Icon className="w-5 h-5" />

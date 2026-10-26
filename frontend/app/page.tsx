@@ -19,7 +19,7 @@ export default function Home() {
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null)
 
   return (
-    <div className="min-h-screen bg-green-50">
+    <div className="min-h-screen">
       <Navigation activeView={activeView} setActiveView={setActiveView} />
       
       {activeView === 'dashboard' && (
