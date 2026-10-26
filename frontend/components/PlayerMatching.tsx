@@ -232,31 +232,6 @@ const PlayerMatching: React.FC<PlayerMatchingProps> = ({
                 )}
               </div>
 
-              {selectedMatch && (
-                <div className="mt-6 bg-white p-6 rounded-lg shadow-md">
-                  <h4 className="text-lg font-semibold mb-4">Match Details</h4>
-                  <div className="space-y-3">
-                    <div>
-                      <span className="font-medium">Team:</span> {selectedMatch.team.name}
-                    </div>
-                    <div>
-                      <span className="font-medium">League:</span> {selectedMatch.team.league}
-                    </div>
-                    <div>
-                      <span className="font-medium">Overall Score:</span> {selectedMatch.score.overall.toFixed(1)}%
-                    </div>
-                    <div>
-                      <span className="font-medium">Offer Range:</span> {formatCurrency(selectedMatch.offer.min)} - {formatCurrency(selectedMatch.offer.max)}
-                    </div>
-                    <button
-                      onClick={() => handleViewReport()}
-                      className="mt-4 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-                    >
-                      Generate Scouting Report
-                    </button>
-                  </div>
-                </div>
-              )}
             </>
           ) : (
             <div className="bg-gray-50 rounded-lg p-12 text-center">
