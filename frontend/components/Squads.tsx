@@ -114,21 +114,21 @@ const Squads: React.FC = () => {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Squads</h1>
-        <p className="text-gray-600 mt-1">
+        <h1 className="font-display text-4xl text-ink leading-tight">Squads</h1>
+        <p className="text-ink-soft mt-1">
           Build a club squad to see whether a signing actually improves it.
-          <span className="text-gray-400">
+          <span className="text-ink-faint">
             {' '}National squads come from the source data and are read-only.
           </span>
         </p>
       </div>
 
       {loading ? (
-        <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">Loading teams…</div>
+        <div className="bg-white border border-rule rounded-sm p-8 text-center text-ink-faint">Loading teams…</div>
       ) : (
         <>
-          <div className="bg-white rounded-lg shadow p-4 mb-6">
-            <label className="text-sm font-medium text-gray-700 block mb-2">Team</label>
+          <div className="bg-white border border-rule rounded-sm p-4 mb-6">
+            <label className="text-sm font-medium text-ink-soft block mb-2">Team</label>
             <select
               value={teamId ?? ''}
               onChange={(e) => setTeamId(Number(e.target.value))}
@@ -149,24 +149,24 @@ const Squads: React.FC = () => {
 
           {stats && (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-              <div className="bg-white rounded-lg shadow p-4">
-                <div className="text-2xl font-bold">{stats.squad_size ?? 0}</div>
-                <div className="text-sm text-gray-600">Squad size</div>
+              <div className="border-t-2 border-rule pt-3">
+                <div className="figure">{stats.squad_size ?? 0}</div>
+                <div className="text-sm text-ink-soft">Squad size</div>
               </div>
-              <div className="bg-white rounded-lg shadow p-4">
-                <div className="text-2xl font-bold">{money(stats.total_market_value)}</div>
-                <div className="text-sm text-gray-600">Squad value</div>
+              <div className="border-t-2 border-rule pt-3">
+                <div className="figure is-estimated">{money(stats.total_market_value)}</div>
+                <div className="text-sm text-ink-soft">Squad value</div>
               </div>
-              <div className="bg-white rounded-lg shadow p-4">
+              <div className="border-t-2 border-rule pt-3">
                 {/* National sides carry no transfer budget, so the overrun
                     warning does not apply to them — it fired for every one of
                     them because their budget is zero by construction. */}
-                <div className={`text-2xl font-bold ${
+                <div className={`figure ${
                   !isNational && (stats.total_market_value || 0) > (stats.budget_remaining || 0)
-                    ? 'text-red-600' : ''}`}>
+                    ? 'text-loss' : ''}`}>
                   {isNational ? '—' : money(stats.budget_remaining)}
                 </div>
-                <div className="text-sm text-gray-600">
+                <div className="text-sm text-ink-soft">
                   {isNational ? 'No transfer budget' : 'Budget'}
                 </div>
                 {!isNational &&
@@ -174,30 +174,30 @@ const Squads: React.FC = () => {
                     <div className="text-xs text-red-600 mt-1">Squad exceeds budget</div>
                   )}
               </div>
-              <div className="bg-white rounded-lg shadow p-4">
-                <div className="text-2xl font-bold">
+              <div className="border-t-2 border-rule pt-3">
+                <div className="figure">
                   {Object.keys(stats.position_distribution || {}).length}
                 </div>
-                <div className="text-sm text-gray-600">Positions covered</div>
+                <div className="text-sm text-ink-soft">Positions covered</div>
               </div>
             </div>
           )}
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 bg-white rounded-lg shadow p-6">
+            <div className="lg:col-span-2 bg-white border border-rule rounded-sm p-6">
               <h3 className="font-semibold mb-2 flex items-center gap-2">
                 <Users className="w-4 h-4" />
                 {team?.name} squad ({squad.length})
               </h3>
               {isNational && (
-                <p className="text-xs text-gray-500 mb-4">
+                <p className="text-xs text-ink-faint mb-4">
                   Players with enough minutes in the source tournament, not the full
                   call-up: goalkeepers and low-minute squad members are not included.
                 </p>
               )}
 
               {squad.length === 0 ? (
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-ink-faint">
                   {isNational
                     ? 'No players recorded for this national side.'
                     : 'Empty squad — sign players from the panel on the right.'}
@@ -205,7 +205,7 @@ const Squads: React.FC = () => {
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead className="text-gray-600 border-b">
+                    <thead className="text-ink-soft border-b">
                       <tr>
                         <th className="text-left py-2">Player</th>
                         <th className="text-left py-2">Pos</th>
@@ -216,12 +216,12 @@ const Squads: React.FC = () => {
                     </thead>
                     <tbody>
                       {squad.map((p) => (
-                        <tr key={p.id} className="border-b last:border-0 hover:bg-gray-50">
+                        <tr key={p.id} className="border-b last:border-0 hover:bg-paper-sunk">
                           <td className="py-2">
-                            <div className="font-medium text-gray-900">{p.name}</div>
-                            <div className="text-xs text-gray-500">{p.nationality}</div>
+                            <div className="font-medium text-ink">{p.name}</div>
+                            <div className="text-xs text-ink-faint">{p.nationality}</div>
                           </td>
-                          <td className="py-2 text-gray-600">{p.position}</td>
+                          <td className="py-2 text-ink-soft">{p.position}</td>
                           <td className="py-2 text-right">
                             {typeof p.performance_index === 'number'
                               ? p.performance_index.toFixed(1)
@@ -233,7 +233,7 @@ const Squads: React.FC = () => {
                               <button
                                 onClick={() => release(p.id)}
                                 disabled={busy}
-                                className="px-2 py-1 text-xs rounded bg-gray-200 text-gray-700 inline-flex items-center gap-1 disabled:opacity-40"
+                                className="px-2 py-1 text-xs rounded bg-gray-200 text-ink-soft inline-flex items-center gap-1 disabled:opacity-40"
                               >
                                 <UserMinus className="w-3 h-3" /> Release
                               </button>
@@ -247,20 +247,20 @@ const Squads: React.FC = () => {
               )}
             </div>
 
-            <div className="bg-white rounded-lg shadow p-6">
+            <div className="bg-white border border-rule rounded-sm p-6">
               <h3 className="font-semibold mb-4 flex items-center gap-2">
                 <Shield className="w-4 h-4" /> Sign a player
               </h3>
 
               {isNational ? (
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-ink-faint">
                   National squads reflect the source data and cannot be edited.
                   Pick a club to build a squad.
                 </p>
               ) : (
                 <>
                   <div className="relative mb-3">
-                    <Search className="w-4 h-4 text-gray-400 absolute left-2 top-2.5" />
+                    <Search className="w-4 h-4 text-ink-faint absolute left-2 top-2.5" />
                     <input
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
@@ -270,15 +270,15 @@ const Squads: React.FC = () => {
                   </div>
 
                   {results.length === 0 && search.trim() && (
-                    <p className="text-sm text-gray-500">No players match that search.</p>
+                    <p className="text-sm text-ink-faint">No players match that search.</p>
                   )}
 
                   <div className="space-y-2">
                     {results.map((p) => (
                       <div key={p.id} className="flex items-center justify-between gap-2">
                         <div className="min-w-0">
-                          <div className="text-sm font-medium text-gray-900 truncate">{p.name}</div>
-                          <div className="text-xs text-gray-500">
+                          <div className="text-sm font-medium text-ink truncate">{p.name}</div>
+                          <div className="text-xs text-ink-faint">
                             {p.position} • {money(p.marketValue)}
                           </div>
                         </div>
@@ -294,7 +294,7 @@ const Squads: React.FC = () => {
                     ))}
                   </div>
 
-                  <p className="text-xs text-gray-400 mt-4">
+                  <p className="text-xs text-ink-faint mt-4">
                     Signing moves the player out of any other club squad.
                   </p>
                 </>
