@@ -127,8 +127,15 @@ def main():
             roi = d["market_analysis"]["roi_analysis"]["roi_percentage"]
             check("el ROI no se dispara", roi < 1000, f"ROI {roi:.0f}%")
             hallazgos = d["executive_summary"]["key_findings"]
-            check("declara la edad ausente",
-                  any("not available" in f for f in hallazgos if "Age" in f))
+            # Findings carry their origin now. What matters is not the wording
+            # but that an age the source never supplied is never presented as a
+            # measurement: it must be marked as a decision.
+            edad = [f for f in hallazgos
+                    if "age" in (f.get("text", "") if isinstance(f, dict) else f).lower()]
+            check("la edad ausente se declara como decision",
+                  bool(edad) and all(
+                      isinstance(f, dict) and f.get("origin") == "decided" for f in edad),
+                  str(edad))
             if rm.status_code == 200 and rm.json():
                 a = rm.json()[0]["offer"]["recommended"]
                 b = d["market_analysis"]["current_market_value"]
