@@ -523,13 +523,14 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
           <p className="text-sm text-ink-soft italic">"{report.executive_summary.executive_statement}"</p>
         </div>
 
-        <div className="mt-6 p-4 bg-field-wash border border-rule rounded-sm">
-          <div className="flex items-center gap-2 text-green-800">
-            <AlertCircle className="w-5 h-5" />
-            <span className="font-medium">Recommended Action:</span>
-          </div>
-          <p className="text-field-dark mt-1">{report.executive_summary.action}</p>
-        </div>
+        {/* A closing line, not a boxed alert. The verdict already leads the
+            report; a tinted panel with a warning icon made the same judgement
+            read as a second, separate finding. This says what to do next and
+            gets out of the way. */}
+        <p className="mt-6 pt-4 border-t border-rule text-ink-soft">
+          <span className="text-ink-faint">Next step — </span>
+          {report.executive_summary.action}
+        </p>
       </div>
     </div>
   );
