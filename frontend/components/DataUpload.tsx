@@ -144,7 +144,7 @@ const DataUpload: React.FC = () => {
       <div className="bg-white border border-rule rounded-sm p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-2xl font-bold text-ink">Your data</h2>
+            <h2 className="font-display text-4xl text-ink leading-tight">Your data</h2>
             <p className="text-sm text-ink-soft mt-1 max-w-2xl">
               Kumü measures your players against the reference population, so a small
               squad still gets indices comparable to any other club's.
