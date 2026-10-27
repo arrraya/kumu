@@ -178,8 +178,9 @@ const Analytics: React.FC = () => {
                       <PolarGrid stroke="#DCE4DF" />
                       <PolarAngleAxis dataKey="metric" tick={{ fontSize: 10 }} />
                       <PolarRadiusAxis domain={[0, 100]} tick={{ fontSize: 9 }} />
-                      <Radar name={a.name} dataKey="A" stroke="#0F2E22" fill="#0F2E22" fillOpacity={0.25} />
-                      {b && <Radar name={b.name} dataKey="B" stroke="#1A7A4C" fill="#1A7A4C" fillOpacity={0.2} />}
+                      <Radar name={a.name} dataKey="A" stroke="#0F2E22" fill="#0F2E22" fillOpacity={0.07} strokeWidth={2} />
+                      {b && <Radar name={b.name} dataKey="B" stroke="#1A7A4C" fill="#1A7A4C"
+                        fillOpacity={0.18} strokeDasharray="4 3" strokeWidth={2} />}
                       <Legend wrapperStyle={{ fontSize: 11 }} />
                       <Tooltip />
                     </RadarChart>
@@ -229,7 +230,7 @@ const Analytics: React.FC = () => {
                       <Legend wrapperStyle={{ fontSize: 11 }} />
                       <Line type="monotone" dataKey="A" name={a.name} stroke="#0F2E22"
                         strokeWidth={2} dot={{ r: 3 }} connectNulls />
-                      {b && <Line type="monotone" dataKey="B" name={b.name} stroke="#1A7A4C"
+                      {b && <Line type="monotone" dataKey="B" name={b.name} stroke="#1A7A4C" strokeDasharray="4 3"
                         strokeWidth={2} dot={{ r: 3 }} connectNulls />}
                     </LineChart>
                   </ResponsiveContainer>

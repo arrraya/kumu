@@ -17,6 +17,9 @@ module.exports = {
         rule: { DEFAULT: '#DCE4DF', strong: '#B9C8C0' },
         // One warm accent, reserved for provenance caveats. Never decorative.
         flag: { DEFAULT: '#9A5B0B', wash: '#FDF6EC' },
+        // Direction in the market table, where the sign is read before the
+        // figure. Nowhere else: a falling price is not an error.
+        loss: { DEFAULT: '#A3372B', wash: '#FBEFED' },
       },
       fontFamily: {
         display: ['Newsreader', 'Georgia', 'serif'],
