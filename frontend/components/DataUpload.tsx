@@ -141,18 +141,18 @@ const DataUpload: React.FC = () => {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      <div className="bg-white rounded-lg shadow p-6">
+      <div className="bg-white border border-rule rounded-sm p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">Your data</h2>
-            <p className="text-sm text-gray-600 mt-1 max-w-2xl">
+            <h2 className="text-2xl font-bold text-ink">Your data</h2>
+            <p className="text-sm text-ink-soft mt-1 max-w-2xl">
               Kumü measures your players against the reference population, so a small
               squad still gets indices comparable to any other club's.
             </p>
           </div>
           {signedIn ? (
             <button onClick={logout}
-              className="shrink-0 px-3 py-2 text-sm text-gray-700 border rounded-lg hover:bg-gray-50 flex items-center gap-2">
+              className="shrink-0 px-3 py-2 text-sm text-ink-soft border rounded-sm hover:bg-paper-sunk flex items-center gap-2">
               <LogOut className="w-4 h-4" /> Sign out{org ? ` · ${org}` : ''}
             </button>
           ) : null}
@@ -160,35 +160,35 @@ const DataUpload: React.FC = () => {
       </div>
 
       {!signedIn && (
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="font-medium text-gray-900 mb-1">Sign in</h3>
-          <p className="text-sm text-gray-600 mb-4">
+        <div className="bg-white border border-rule rounded-sm p-6">
+          <h3 className="font-medium text-ink mb-1">Sign in</h3>
+          <p className="text-sm text-ink-soft mb-4">
             You can check a file without an account. Saving it needs a sign-in.
           </p>
           <div className="flex flex-wrap gap-3">
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
               placeholder="email" autoComplete="username"
-              className="flex-1 min-w-[200px] px-3 py-2 border rounded-lg text-sm" />
+              className="flex-1 min-w-[200px] px-3 py-2 border rounded-sm text-sm" />
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
               placeholder="password" autoComplete="current-password"
-              className="flex-1 min-w-[200px] px-3 py-2 border rounded-lg text-sm" />
+              className="flex-1 min-w-[200px] px-3 py-2 border rounded-sm text-sm" />
             <button onClick={login} disabled={busy || !email || !password}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50 flex items-center gap-2">
+              className="px-4 py-2 bg-field text-white rounded-sm text-sm hover:bg-field-dark disabled:opacity-50 flex items-center gap-2">
               <LogIn className="w-4 h-4" /> Sign in
             </button>
           </div>
         </div>
       )}
 
-      <div className="bg-white rounded-lg shadow p-6">
+      <div className="bg-white border border-rule rounded-sm p-6">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="font-medium text-gray-900">Your file</h3>
+          <h3 className="font-medium text-ink">Your file</h3>
           <div className="flex items-center gap-3">
             <button onClick={() => setRaw(JSON.stringify(EJEMPLO, null, 2))}
-              className="text-sm text-green-700 hover:underline">
+              className="text-sm text-field-dark hover:underline">
               See an example
             </button>
-            <label className="text-sm text-green-700 hover:underline cursor-pointer">
+            <label className="text-sm text-field-dark hover:underline cursor-pointer">
               Upload a file
               <input type="file" accept=".json,application/json" className="hidden"
                 onChange={(e) => e.target.files?.[0] && readFile(e.target.files[0])} />
@@ -197,19 +197,19 @@ const DataUpload: React.FC = () => {
         </div>
         <textarea value={raw} onChange={(e) => setRaw(e.target.value)} rows={12}
           spellCheck={false} placeholder="Paste the JSON with your players and your club"
-          className="w-full px-3 py-2 border rounded-lg font-mono text-xs" />
+          className="w-full px-3 py-2 border rounded-sm font-mono text-xs" />
         {parsed === undefined && raw.trim() && (
-          <p className="text-sm text-amber-700 mt-2 flex items-center gap-2">
+          <p className="text-sm text-flag mt-2 flex items-center gap-2">
             <AlertTriangle className="w-4 h-4" /> That text is not valid JSON.
           </p>
         )}
         <div className="flex gap-3 mt-4">
           <button onClick={validate} disabled={busy || !parsed}
-            className="px-4 py-2 border border-green-600 text-green-700 rounded-lg text-sm hover:bg-green-50 disabled:opacity-50">
+            className="px-4 py-2 border border-green-600 text-field-dark rounded-sm text-sm hover:bg-field-wash disabled:opacity-50">
             Check
           </button>
           <button onClick={upload} disabled={busy || !parsed || !report || !signedIn}
-            className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50 flex items-center gap-2">
+            className="px-4 py-2 bg-field text-white rounded-sm text-sm hover:bg-field-dark disabled:opacity-50 flex items-center gap-2">
             <Upload className="w-4 h-4" /> Save to Kumü
           </button>
         </div>
@@ -221,26 +221,26 @@ const DataUpload: React.FC = () => {
       </div>
 
       {report && (
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="font-medium text-gray-900 mb-1">What this file unlocks</h3>
-          <p className="text-sm text-gray-600 mb-4">
+        <div className="bg-white border border-rule rounded-sm p-6">
+          <h3 className="font-medium text-ink mb-1">What this file unlocks</h3>
+          <p className="text-sm text-ink-soft mb-4">
             {report.players_received} {report.players_received === 1 ? 'player' : 'players'}{report.club ? ` · ${report.club}` : ''}
           </p>
           <div className="grid gap-2 sm:grid-cols-2">
             {Object.entries(report.capabilities || {}).map(([key, cap]: any) => (
-              <div key={key} className="flex items-start gap-2 p-3 rounded-lg bg-gray-50">
+              <div key={key} className="flex items-start gap-2 p-3 rounded-sm bg-paper-sunk">
                 {cap.enabled
-                  ? <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
-                  : <XCircle className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />}
+                  ? <CheckCircle2 className="w-4 h-4 text-field mt-0.5 shrink-0" />
+                  : <XCircle className="w-4 h-4 text-ink-faint mt-0.5 shrink-0" />}
                 <div className="min-w-0">
                   <div className="text-sm font-medium text-gray-800">{CAPABILITY_LABELS[key] ?? key.replace(/_/g, ' ')}</div>
-                  <div className="text-xs text-gray-600">{cap.requires}</div>
+                  <div className="text-xs text-ink-soft">{cap.requires}</div>
                 </div>
               </div>
             ))}
           </div>
           {(report.warnings || []).length > 0 && (
-            <div className="mt-4 p-3 rounded-lg bg-amber-50 border border-amber-200">
+            <div className="mt-4 p-3 rounded-sm bg-flag-wash border border-flag">
               {report.warnings.map((w: string, i: number) => (
                 <p key={i} className="text-sm text-amber-800 flex items-start gap-2">
                   <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" /> {w}
@@ -249,7 +249,7 @@ const DataUpload: React.FC = () => {
             </div>
           )}
           {!signedIn && (
-            <p className="text-sm text-gray-600 mt-4">
+            <p className="text-sm text-ink-soft mt-4">
               Sign in above to save it.
             </p>
           )}
@@ -257,9 +257,9 @@ const DataUpload: React.FC = () => {
       )}
 
       {result && (
-        <div className="bg-white rounded-lg shadow p-6 border-l-4 border-green-600">
-          <h3 className="font-medium text-gray-900 mb-2">Loaded</h3>
-          <p className="text-sm text-gray-700">
+        <div className="bg-white border border-rule rounded-sm p-6 border-l-4 border-green-600">
+          <h3 className="font-medium text-ink mb-2">Loaded</h3>
+          <p className="text-sm text-ink-soft">
             {result.result.players_written}{' '}
             {result.result.players_written === 1 ? 'player' : 'players'} saved
             {result.result.club
@@ -267,7 +267,7 @@ const DataUpload: React.FC = () => {
               : ''}
           </p>
           {result.result.positions_without_reference?.length > 0 && (
-            <p className="text-sm text-amber-700 mt-2">
+            <p className="text-sm text-flag mt-2">
               Not enough reference data to scale these positions:{' '}
               {result.result.positions_without_reference.join(', ')}. Their indices stay on the raw
               scale and are reported as such.
