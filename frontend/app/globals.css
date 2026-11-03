@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&family=Archivo:wght@400;500;600&family=Archivo+Narrow:wght@500;600&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -17,7 +17,8 @@
 
   h1, h2, h3 {
     @apply font-display text-ink;
-    font-weight: 500;
+    font-weight: 700;
+    letter-spacing: -0.03em;
   }
 
   :focus-visible {
@@ -29,7 +30,11 @@
   /* PROVENANCE MARKS — the one device that carries Kumü's argument.
      Every figure states whether it was measured, estimated or decided. This is
      the product's differentiator, so it belongs in the typography rather than
-     in a footnote nobody reads. A legend explains it once per view. */
+     in a footnote nobody reads. A legend explains it once per view.
+
+     The mark colour is flag, never clay or slate: those two mean "player A"
+     and "player B" on every chart in the product, and an underline that could
+     mean either provenance or series is worse than no underline at all. */
   .is-measured {
     /* Plain. Measurement is the baseline; it needs no mark. */
   }
@@ -37,9 +42,17 @@
   .is-estimated {
     text-decoration: underline;
     text-decoration-style: dotted;
-    text-decoration-color: theme('colors.flag.DEFAULT');
+    text-decoration-color: theme('colors.flag.mark');
     text-underline-offset: 0.25em;
     text-decoration-thickness: 1px;
+  }
+
+  .is-decided {
+    /* Not measured and not derived from data either: a value Kumü chose so a
+       calculation could run. A dashed rule reads as provisional where a dotted
+       one reads as approximate. */
+    border-bottom: 1px dashed theme('colors.ink.faint');
+    padding-bottom: 1px;
   }
 
   .is-curated {
@@ -49,12 +62,44 @@
     text-decoration-thickness: 1px;
   }
 
+  /* THE TWO RETÍCULAS, and the rule for choosing between them.
+
+     .grid-zones is for content that has a position on the pitch: Analytics,
+     the pitch map, squads read by position, the scouting report. Six columns
+     by four bands, the same grid the pipeline uses to compute pass flow, so
+     a panel occupies zones rather than an arbitrary fraction.
+
+     .grid-doc is the escape hatch, for content with no geography: Your Data,
+     settings, market tables, uploads. Twelve document columns.
+
+     The two never appear on the same screen. Palette and type are identical in
+     both — only the grid changes. */
+  .grid-zones {
+    @apply grid grid-cols-zones gap-3;
+  }
+
+  .grid-doc {
+    @apply grid grid-cols-doc gap-6;
+  }
+
+  /* Condensed caps. Every label, axis and column head in the product. */
+  .label {
+    @apply font-label text-label font-semibold uppercase text-ink-faint;
+  }
+
   .figure {
+    @apply font-display text-data-md text-ink tabular;
+    font-weight: 700;
+  }
+
+  .figure-lg {
     @apply font-display text-data-lg text-ink tabular;
+    font-weight: 700;
   }
 
   .figure-hero {
     @apply font-display text-data-xl text-ink tabular;
+    font-weight: 700;
   }
 
   /* A document section, not a card: rules separate, they do not enclose. */
@@ -62,22 +107,44 @@
     @apply border-t border-rule pt-8 mt-10;
   }
 
-  .panel {
-    @apply bg-paper-sunk border border-rule rounded-sm p-6;
+  /* A masthead rule is heavier than a section rule: the eye needs to know
+     where the page starts without reading anything. */
+  .masthead {
+    @apply border-b-[3px] border-ink pb-5;
   }
 
+  .panel {
+    @apply bg-paper-card border border-rule p-6;
+  }
+
+  /* The pitch ground. Only ever under a spatial figure, never behind text. */
+  .pitch {
+    @apply bg-grass border-2 border-ink;
+  }
+
+  /* PERCENTILE BARS. Track then fill, one row per series, stacked so the two
+     players read as a pair rather than as two separate charts. */
+  .bar-track {
+    @apply h-2.5 bg-paper-sunk;
+  }
+
+  .bar-a { @apply h-2.5 bg-clay; }
+  .bar-b { @apply h-2.5 bg-slate; }
+
   .btn-primary {
-    @apply px-4 py-2 bg-field text-white rounded-sm font-medium
+    @apply px-5 py-3 bg-field text-paper font-semibold
            hover:bg-field-dark transition-colors;
+    min-height: 44px;
   }
 
   .btn-quiet {
-    @apply px-4 py-2 border border-rule rounded-sm text-ink
+    @apply px-5 py-3 border-2 border-ink text-ink font-semibold
            hover:bg-paper-sunk transition-colors;
+    min-height: 44px;
   }
 
   /* Kept so existing markup keeps working while components are migrated. */
   .card {
-    @apply bg-white border border-rule rounded-sm p-6;
+    @apply bg-paper-card border border-rule p-6;
   }
 }

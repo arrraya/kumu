@@ -23,9 +23,9 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ player }) => {
 
   if (data.length === 0) {
     return (
-      <div className="mt-4 bg-gray-50 p-4 rounded-lg">
-        <span className="text-sm font-medium text-gray-600">Match-by-match performance</span>
-        <p className="text-sm text-gray-500 mt-2">No match data available for this player.</p>
+      <div className="mt-4 bg-paper-sunk p-4 rounded-lg">
+        <span className="text-sm font-medium text-ink-soft">Match-by-match performance</span>
+        <p className="text-sm text-ink-soft mt-2">No match data available for this player.</p>
       </div>
     )
   }
@@ -34,11 +34,11 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ player }) => {
     if (!active || !payload?.length) return null
     const d = payload[0].payload
     return (
-      <div className="bg-white border border-gray-200 rounded-md px-3 py-2 shadow-sm text-xs">
-        <p className="font-medium text-gray-800">Match {label.replace('M', '')}</p>
-        <p className="text-blue-600">Rating: {d.value.toFixed(1)}</p>
+      <div className="bg-paper-card border border-rule rounded-md px-3 py-2 shadow-sm text-xs">
+        <p className="font-medium text-ink">Match {label.replace('M', '')}</p>
+        <p className="text-slate-ink">Rating: {d.value.toFixed(1)}</p>
         {(d.goals > 0 || d.assists > 0) && (
-          <p className="text-gray-600">
+          <p className="text-ink-soft">
             {d.goals} goal{d.goals === 1 ? '' : 's'} • {d.assists} assist{d.assists === 1 ? '' : 's'}
           </p>
         )}
@@ -47,14 +47,14 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ player }) => {
   }
 
   return (
-    <div className="mt-4 bg-gray-50 p-4 rounded-lg">
+    <div className="mt-4 bg-paper-sunk p-4 rounded-lg">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-sm font-medium text-gray-600">
+        <span className="text-sm font-medium text-ink-soft">
           Match-by-match performance ({data.length} matches)
         </span>
         <span
           className={`text-sm font-medium ${
-            trend > 0 ? 'text-green-600' : trend < 0 ? 'text-red-600' : 'text-gray-600'
+            trend > 0 ? 'text-ink' : trend < 0 ? 'text-loss' : 'text-ink-soft'
           }`}
         >
           {trend > 0 ? '+' : ''}
@@ -63,11 +63,11 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ player }) => {
       </div>
       <ResponsiveContainer width="100%" height={120}>
         <LineChart data={data} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+          <CartesianGrid strokeDasharray="3 3" stroke="#D8D7CC" />
           <XAxis dataKey="label" tick={{ fontSize: 10 }} />
           <YAxis tick={{ fontSize: 10 }} domain={['dataMin - 5', 'dataMax + 5']} />
           <Tooltip content={renderTooltip} />
-          <Line type="monotone" dataKey="value" stroke="#3B82F6" strokeWidth={2} dot={{ r: 3 }} />
+          <Line type="monotone" dataKey="value" stroke="#3A5A7A" strokeWidth={2} dot={{ r: 3 }} />
         </LineChart>
       </ResponsiveContainer>
     </div>

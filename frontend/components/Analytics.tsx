@@ -5,12 +5,33 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts'
 import { api } from '@/lib/api'
+import { valueMark, valueTitle } from '@/lib/provenance'
+import PitchMap from './PitchMap'
 
 /**
  * Player comparison built entirely from pipeline data.
  * Percentiles are computed against players in the SAME position, so a striker
  * is measured against strikers and a defender against defenders.
+ *
+ * CANCHA. Three things changed with the visual language, and none of them is
+ * decoration:
+ *
+ *  - The pitch map moved from a component buried in the scouting report to the
+ *    first figure on this screen. Kumü's differentiation is spatial; the old
+ *    layout hid it behind two charts that any provider also ships.
+ *  - The percentile rows replaced the "Raw metrics" table. The table and the
+ *    bars were showing the same two numbers in two places, and the table lost
+ *    every comparison it was meant to serve: a value and a rank on different
+ *    scales cannot be scanned down one column.
+ *  - A is clay and B is slate everywhere, including inside the pitch map. The
+ *    two differ in lightness as well as hue, so the screen holds up printed in
+ *    black and white and for a colour-blind reader.
  */
+
+const SERIES = {
+  a: { stroke: '#C25A3A', ink: '#A6462A', bar: 'bar-a' },
+  b: { stroke: '#3A5A7A', ink: '#2F4A66', bar: 'bar-b' },
+} as const
 
 const METRICS = [
   { path: ['passing', 'completion_rate'], label: 'Pass completion', fmt: (v: number) => `${(v * 100).toFixed(1)}%` },
@@ -28,10 +49,13 @@ const getMetric = (player: any, path: string[]): number | null => {
   return typeof v === 'number' ? v : null
 }
 
+const spatialOf = (player: any) => player?.spatial_profile ?? player?.spatialProfile ?? null
+
 const PlayerPicker: React.FC<{
-  label: string; players: any[]; value: any; onChange: (p: any) => void; color: string
-}> = ({ label, players, value, onChange, color }) => {
+  label: string; players: any[]; value: any; onChange: (p: any) => void; series: keyof typeof SERIES
+}> = ({ label, players, value, onChange, series }) => {
   const [query, setQuery] = useState('')
+  const inputId = `pick-${series}`
   const matches = useMemo(() => {
     if (!query.trim()) return []
     const q = query.toLowerCase()
@@ -39,49 +63,56 @@ const PlayerPicker: React.FC<{
   }, [query, players])
 
   return (
-    <div className="bg-white border border-rule rounded-sm p-4">
-      <div className="flex items-center gap-2 mb-2">
-        <span className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
-        <span className="text-sm font-medium text-ink-soft">{label}</span>
+    <div className="bg-paper-card border border-rule p-5">
+      <div className="flex items-center gap-2.5 mb-3">
+        {/* A square, not a dot: the same mark that keys the bars and the radar. */}
+        <span className="w-4 h-2.5 inline-block" style={{ backgroundColor: SERIES[series].stroke }} />
+        <span className="label">{label}</span>
       </div>
 
       {value ? (
-        <div>
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="text-lg font-bold text-ink">{value.name}</div>
-              <div className="text-sm text-ink-soft">
-                {value.position} • {value.nationality} • {typeof value.marketValue === 'number' ? `€${(value.marketValue / 1e6).toFixed(1)}M` : 'value n/a'}
-              </div>
-              <div className="text-sm text-ink-faint mt-1">
-                Index: {value.performanceIndex?.value?.toFixed(1) ?? 'n/a'}
-                {value.performance_history?.length ? ` • ${value.performance_history.length} matches` : ''}
-              </div>
-              {/* Without an index the value shown is a floor estimate, not a
-                  reading of this player's output — say so rather than letting
-                  the figure look as solid as everyone else's. */}
-              {!value.performanceIndex?.value && (
-                <div className="text-xs text-amber-700 mt-1">
-                  Too few matches for an index — value is a floor estimate
-                </div>
-              )}
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="font-display text-2xl leading-none">{value.name}</div>
+            <div className="mt-2 text-sm text-ink-soft">
+              {value.position} • {value.nationality} •{' '}
+              {typeof value.marketValue === 'number' ? (
+                <span className={`tabular ${valueMark(value)}`} title={valueTitle(value)}>
+                  €{(value.marketValue / 1e6).toFixed(1)}M
+                </span>
+              ) : 'value n/a'}
             </div>
-            <button onClick={() => { onChange(null); setQuery('') }}
-              className="text-xs text-ink-faint hover:text-gray-800">change</button>
+            <div className="mt-1 text-sm text-ink-faint tabular">
+              Index: {value.performanceIndex?.value?.toFixed(1) ?? 'n/a'}
+              {value.performance_history?.length ? ` • ${value.performance_history.length} matches` : ''}
+            </div>
+            {/* Without an index the value shown is a floor estimate, not a
+                reading of this player's output — say so rather than letting
+                the figure look as solid as everyone else's. */}
+            {!value.performanceIndex?.value && (
+              <div className="mt-2 text-xs text-flag">
+                Too few matches for an index — value is a floor estimate
+              </div>
+            )}
           </div>
+          <button type="button" onClick={() => { onChange(null); setQuery('') }}
+            className="label hover:text-ink">change</button>
         </div>
       ) : (
         <div className="relative">
-          <input value={query} onChange={(e) => setQuery(e.target.value)}
+          <label htmlFor={inputId} className="sr-only">{label}</label>
+          <input id={inputId} value={query} onChange={(e) => setQuery(e.target.value)}
             placeholder="Search a player…"
-            className="w-full border rounded-md px-3 py-2 text-sm" />
+            className="w-full bg-paper border border-rule-strong px-3.5 py-3 text-sm
+                       placeholder:text-ink-faint focus:border-ink" />
           {matches.length > 0 && (
-            <div className="absolute z-10 left-0 right-0 mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
+            <div className="absolute z-10 left-0 right-0 mt-1 bg-paper-card border border-ink
+                            max-h-60 overflow-y-auto">
               {matches.map((p) => (
-                <button key={p.id} onClick={() => { onChange(p); setQuery('') }}
-                  className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm">
-                  <div className="font-medium">{p.name}</div>
-                  <div className="text-xs text-ink-faint">{p.position} • {p.nationality}</div>
+                <button type="button" key={p.id} onClick={() => { onChange(p); setQuery('') }}
+                  className="w-full text-left px-3.5 py-3 hover:bg-paper-sunk border-b border-rule last:border-0">
+                  <div className="font-medium text-sm">{p.name}</div>
+                  <div className="label mt-0.5">{p.position} • {p.nationality}</div>
                 </button>
               ))}
             </div>
@@ -91,6 +122,56 @@ const PlayerPicker: React.FC<{
     </div>
   )
 }
+
+/**
+ * One percentile bar, with its rank spelled out beside it.
+ *
+ * The number beside the track is not redundant with the bar: an empty track
+ * used to mean two different things — ranked last, and not ranked at all —
+ * and nothing on screen told them apart. Now a rank of zero draws a sliver and
+ * prints 0, while no rank prints an em dash and draws nothing.
+ */
+const Bar: React.FC<{ pct: number | null; cls: string; label: string }> = ({ pct, cls, label }) => (
+  <div className="flex items-center gap-2.5">
+    <div className="bar-track flex-1">
+      {pct !== null && (
+        <span
+          className={`${cls} block`}
+          role="img"
+          aria-label={`${label}: percentile ${pct}`}
+          style={{ width: `max(3px, ${Math.max(0, Math.min(100, pct))}%)` }}
+        />
+      )}
+    </div>
+    <span className="font-label text-label font-semibold w-7 shrink-0 text-right tabular text-ink-soft">
+      {pct === null ? '—' : pct}
+    </span>
+  </div>
+)
+
+/**
+ * One metric, both players, as a pair of stacked bars under a shared label.
+ *
+ * Stacked rather than side by side on purpose: two bars that start from the
+ * same left edge are compared by length, which is the one judgement the eye
+ * makes accurately without a scale.
+ */
+const PercentileRow: React.FC<{
+  label: string
+  valueText: string
+  pctA: number | null
+  pctB: number | null
+  hasB: boolean
+}> = ({ label, valueText, pctA, pctB, hasB }) => (
+  <div className="flex flex-col gap-1.5">
+    <div className="flex items-baseline justify-between gap-4">
+      <span className="label text-ink">{label}</span>
+      <span className="text-sm text-ink-soft tabular shrink-0">{valueText}</span>
+    </div>
+    <Bar pct={pctA} cls={SERIES.a.bar} label={label} />
+    {hasB && <Bar pct={pctB} cls={SERIES.b.bar} label={label} />}
+  </div>
+)
 
 const Analytics: React.FC = () => {
   const [players, setPlayers] = useState<any[]>([])
@@ -144,11 +225,15 @@ const Analytics: React.FC = () => {
     }))
   }, [a, b])
 
+  const axisFont = { fontFamily: 'Archivo Narrow, Archivo, sans-serif', fontSize: 10, fill: '#5C5F56' }
+
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-6">
-        <h1 className="font-display text-4xl text-ink leading-tight">Player comparison</h1>
-        <p className="mt-2 max-w-read text-ink-soft">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+
+      <div className="masthead">
+        <div className="label text-clay-ink mb-3">Analytics · percentiles against the position</div>
+        <h1 className="font-display text-4xl md:text-5xl leading-none m-0">Player comparison</h1>
+        <p className="mt-4 max-w-read text-lg text-ink-soft">
           Every figure is measured from match events. Percentiles rank the
           player against others in the same position, where 50 is the typical
           player for that role.
@@ -156,84 +241,169 @@ const Analytics: React.FC = () => {
       </div>
 
       {loading ? (
-        <div className="bg-white border border-rule rounded-sm p-8 text-center text-ink-faint">Loading players…</div>
+        <div className="panel mt-8 text-center text-ink-faint">Loading players…</div>
       ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <PlayerPicker label="Player A" players={players} value={a} onChange={setA} color="#0F2E22" />
-            <PlayerPicker label="Player B (optional)" players={players} value={b} onChange={setB} color="#1A7A4C" />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-8">
+            <PlayerPicker label="Player A" players={players} value={a} onChange={setA} series="a" />
+            <PlayerPicker label="Player B (optional)" players={players} value={b} onChange={setB} series="b" />
           </div>
 
+          {/* The legend for the provenance mark, once per view. A typographic
+              device nobody has been taught to read is just a stray underline. */}
+          <p className="mt-3 max-w-read text-sm text-ink-soft">
+            A figure carrying a <span className="is-estimated">dotted underline</span> was
+            estimated from the league anchor, not declared by the club.
+          </p>
+
           {!a ? (
-            <div className="bg-white border border-rule rounded-sm p-8 text-center text-ink-faint">
+            <div className="panel mt-8 text-center text-ink-faint">
               Pick a player to see their statistical profile.
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-                <div className="bg-white border border-rule rounded-sm p-6">
-                  <h3 className="font-semibold mb-4">Percentile profile</h3>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <RadarChart data={radarData}>
-                      <PolarGrid stroke="#DCE4DF" />
-                      <PolarAngleAxis dataKey="metric" tick={{ fontSize: 10 }} />
-                      <PolarRadiusAxis domain={[0, 100]} tick={{ fontSize: 9 }} />
-                      <Radar name={a.name} dataKey="A" stroke="#0F2E22" fill="#0F2E22" fillOpacity={0.07} strokeWidth={2} />
-                      {b && <Radar name={b.name} dataKey="B" stroke="#1A7A4C" fill="#1A7A4C"
-                        fillOpacity={0.18} strokeDasharray="4 3" strokeWidth={2} />}
-                      <Legend wrapperStyle={{ fontSize: 11 }} />
-                      <Tooltip />
-                    </RadarChart>
-                  </ResponsiveContainer>
+              {/* HEAD TO HEAD. The index is the answer this screen exists to
+                  give, so it is set at display size and nothing on the page
+                  competes with it. */}
+              <div className="mt-10 flex flex-wrap items-end justify-between gap-8 border-b-[3px] border-ink pb-5">
+                <h2 className="font-display text-3xl md:text-4xl leading-none m-0">
+                  {a.name}
+                  {b && <span className="font-normal text-ink-faint"> vs {b.name}</span>}
+                </h2>
+                <div className="flex gap-8">
+                  <div className="pl-3.5 border-l-[6px]" style={{ borderColor: SERIES.a.stroke }}>
+                    <div className="label">Index A</div>
+                    <div className="figure-lg">{a.performanceIndex?.value?.toFixed(1) ?? '—'}</div>
+                  </div>
+                  {b && (
+                    <div className="pl-3.5 border-l-[6px]" style={{ borderColor: SERIES.b.stroke }}>
+                      <div className="label">Index B</div>
+                      <div className="figure-lg text-ink-soft">{b.performanceIndex?.value?.toFixed(1) ?? '—'}</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* The spatial figure first: it is the one reading no other
+                  provider ships, and it frames everything below it. */}
+              <div className="mt-10">
+                <PitchMap profile={spatialOf(a)} name={a.name} tone="a" />
+              </div>
+              {b && (
+                <div className="mt-10">
+                  <PitchMap profile={spatialOf(b)} name={b.name} tone="b" />
+                </div>
+              )}
+
+              <div className="section grid grid-cols-1 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] gap-10">
+                <div>
+                  <h3 className="font-display text-2xl m-0 pb-3 border-b border-rule">
+                    Percentiles against the position
+                  </h3>
+                  <div className="mt-5 flex flex-col gap-4">
+                    {METRICS.map((m) => {
+                      const va = getMetric(a, m.path)
+                      const vb = b ? getMetric(b, m.path) : null
+                      const left = va === null ? 'n/a' : m.fmt(va)
+                      const right = !b ? '' : ` / ${vb === null ? 'n/a' : m.fmt(vb)}`
+                      return (
+                        <PercentileRow
+                          key={m.label}
+                          label={m.label}
+                          valueText={`${left}${right}`}
+                          pctA={percentile(a, m.path)}
+                          pctB={b ? percentile(b, m.path) : null}
+                          hasB={Boolean(b)}
+                        />
+                      )
+                    })}
+                  </div>
+
+                  <div className="mt-6 flex flex-wrap gap-6">
+                    <span className="label text-ink flex items-center gap-2">
+                      <span className="w-4 h-2.5 inline-block" style={{ backgroundColor: SERIES.a.stroke }} />
+                      {a.name}
+                    </span>
+                    {b && (
+                      <span className="label text-ink flex items-center gap-2">
+                        <span className="w-4 h-2.5 inline-block" style={{ backgroundColor: SERIES.b.stroke }} />
+                        {b.name}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-4 max-w-read text-sm text-ink-soft">
+                    The number beside each bar is the rank. A dash means the
+                    position has fewer than five players to rank against, so no
+                    rank was computed — which is not the same as ranking last,
+                    and the two are drawn differently.
+                  </p>
                 </div>
 
-                <div className="bg-white border border-rule rounded-sm p-6 overflow-x-auto">
-                  <h3 className="font-semibold mb-4">Raw metrics</h3>
-                  <table className="w-full text-sm">
-                    <thead className="text-ink-soft">
-                      <tr className="border-b">
-                        <th className="text-left py-2">Metric</th>
-                        <th className="text-right py-2 text-ink">{a.name.split(' ').slice(-1)[0]}</th>
-                        {b && <th className="text-right py-2 text-field">{b.name.split(' ').slice(-1)[0]}</th>}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {METRICS.map((m) => {
-                        const va = getMetric(a, m.path)
-                        const vb = b ? getMetric(b, m.path) : null
-                        const pa = percentile(a, m.path)
-                        const pb = b ? percentile(b, m.path) : null
-                        return (
-                          <tr key={m.label} className="border-b last:border-0">
-                            <td className="py-2 text-ink-soft">{m.label}</td>
-                            <Cell value={va === null ? null : m.fmt(va)} pct={pa} />
-                            {b && (
-                              <Cell value={vb === null ? null : m.fmt(vb)} pct={pb} />
-                            )}
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
+                <div>
+                  <h3 className="font-display text-2xl m-0 pb-3 border-b border-rule">Shape</h3>
+                  <div className="mt-5">
+                    <ResponsiveContainer width="100%" height={300}>
+                      <RadarChart data={radarData} outerRadius="72%">
+                        <PolarGrid stroke="#D8D7CC" />
+                        <PolarAngleAxis dataKey="metric" tick={axisFont} />
+                        <PolarRadiusAxis domain={[0, 100]} tickCount={3} tick={{ ...axisFont, fontSize: 9 }} />
+                        {/* Solid against dashed, so the two silhouettes are
+                            told apart by line style and not by colour alone. */}
+                        <Radar name={a.name} dataKey="A" stroke={SERIES.a.stroke}
+                          fill={SERIES.a.stroke} fillOpacity={0.16} strokeWidth={2.5} />
+                        {b && <Radar name={b.name} dataKey="B" stroke={SERIES.b.stroke}
+                          fill={SERIES.b.stroke} fillOpacity={0.12} strokeDasharray="5 3" strokeWidth={2} />}
+                        <Tooltip />
+                      </RadarChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <p className="mt-2 max-w-read text-sm text-ink-soft">
+                    One vertex per metric. The solid outline is A and the dashed
+                    one is B: they read apart in greyscale, which is how a
+                    printed report arrives at a meeting. A metric with no rank
+                    sits at the centre here, so read the bars for those.
+                  </p>
                 </div>
               </div>
 
               {trendData.length > 0 && (
-                <div className="bg-white border border-rule rounded-sm p-6">
-                  <h3 className="font-semibold mb-4">Match-by-match rating</h3>
-                  <ResponsiveContainer width="100%" height={260}>
-                    <LineChart data={trendData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#DCE4DF" />
-                      <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                      <YAxis tick={{ fontSize: 11 }} domain={['dataMin - 5', 'dataMax + 5']} />
-                      <Tooltip />
-                      <Legend wrapperStyle={{ fontSize: 11 }} />
-                      <Line type="monotone" dataKey="A" name={a.name} stroke="#0F2E22"
-                        strokeWidth={2} dot={{ r: 3 }} connectNulls />
-                      {b && <Line type="monotone" dataKey="B" name={b.name} stroke="#1A7A4C" strokeDasharray="4 3"
-                        strokeWidth={2} dot={{ r: 3 }} connectNulls />}
-                    </LineChart>
-                  </ResponsiveContainer>
+                <div className="section">
+                  <h3 className="font-display text-2xl m-0 pb-3 border-b border-rule">
+                    Match by match
+                  </h3>
+                  <div className="mt-5">
+                    <ResponsiveContainer width="100%" height={280}>
+                      <LineChart data={trendData} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
+                        <CartesianGrid strokeDasharray="2 4" stroke="#D8D7CC" vertical={false} />
+                        <XAxis dataKey="label" tick={axisFont} stroke="#B6B4A6" />
+                        {/* Rounded bounds and a formatted tick. The domain used
+                            to be computed as dataMin - 5, which handed the axis
+                            raw floats and printed 99.99999999999999 down the
+                            side of the chart. */}
+                        <YAxis
+                          tick={axisFont}
+                          stroke="#B6B4A6"
+                          width={44}
+                          domain={[
+                            (dataMin: number) => Math.max(0, Math.floor((dataMin - 5) / 5) * 5),
+                            (dataMax: number) => Math.ceil((dataMax + 5) / 5) * 5,
+                          ]}
+                          tickFormatter={(v: number) => String(Math.round(v))}
+                          allowDecimals={false}
+                        />
+                        <Tooltip formatter={(v: any) => (typeof v === 'number' ? v.toFixed(1) : v)} />
+                        <Legend wrapperStyle={{ fontFamily: 'Archivo Narrow, Archivo, sans-serif', fontSize: 11 }} />
+                        <Line type="monotone" dataKey="A" name={a.name} stroke={SERIES.a.stroke}
+                          strokeWidth={2.5} dot={{ r: 3 }} connectNulls />
+                        {b && <Line type="monotone" dataKey="B" name={b.name} stroke={SERIES.b.stroke}
+                          strokeDasharray="5 3" strokeWidth={2} dot={{ r: 3 }} connectNulls />}
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <p className="mt-2 max-w-read text-sm text-ink-soft">
+                    A rating per appearance, in order. A gap is a match without
+                    a rating, not a zero.
+                  </p>
                 </div>
               )}
             </>
@@ -243,35 +413,5 @@ const Analytics: React.FC = () => {
     </div>
   )
 }
-
-/**
- * A measurement and where it ranks, as two readings rather than one string.
- *
- * These used to share a cell as "86.0% · p73": two different scales joined by
- * a dot, so neither could be scanned down its column. The value stays tabular
- * and the rank becomes a bar, which is what a percentile is for.
- */
-const Cell: React.FC<{ value: string | null; pct: number | null }> = ({ value, pct }) => (
-  <td className="py-2.5 text-right align-top">
-    {value === null ? (
-      <span className="text-ink-faint">n/a</span>
-    ) : (
-      <>
-        <div className="tabular text-ink">{value}</div>
-        {pct !== null && (
-          <div className="mt-1 flex items-center justify-end gap-2">
-            <span className="w-16 h-1 bg-paper-sunk">
-              <span
-                className="block h-full bg-field"
-                style={{ width: `${Math.max(0, Math.min(100, pct))}%` }}
-              />
-            </span>
-            <span className="w-6 text-xs text-ink-faint tabular">{pct}</span>
-          </div>
-        )}
-      </>
-    )}
-  </td>
-)
 
 export default Analytics

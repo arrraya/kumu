@@ -111,10 +111,18 @@ const PlayerMatching: React.FC<PlayerMatchingProps> = ({
   const formatCurrency = (value: number) => `€${(value / 1000000).toFixed(1)}M`;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+      <div className="masthead mb-10">
+        <div className="label text-clay-ink mb-3">Player matching · which clubs fit</div>
+        <h1 className="font-display text-4xl md:text-5xl leading-none m-0">Player matching</h1>
+        <p className="mt-4 max-w-read text-lg text-ink-soft">
+          Pick a player and Kumü ranks the clubs he could join by how well the
+          squad, the style and the budget actually line up.
+        </p>
+      </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-1">
-          <div className="bg-white rounded-lg shadow-md p-4 mb-4">
+          <div className="bg-paper-card border border-rule p-5 mb-5">
             <h3 className="text-lg font-semibold mb-4">Filters</h3>
             <div className="space-y-4">
               <input
@@ -160,7 +168,7 @@ const PlayerMatching: React.FC<PlayerMatchingProps> = ({
             </div>
           </div>
           
-          <div className="bg-white rounded-lg shadow-md p-4">
+          <div className="bg-paper-card rounded-lg shadow-md p-4">
             <h3 className="text-lg font-semibold mb-4">Available Players</h3>
             {loading ? (
               <div>Loading players...</div>
@@ -182,24 +190,24 @@ const PlayerMatching: React.FC<PlayerMatchingProps> = ({
         <div className="lg:col-span-2">
           {selectedPlayer ? (
             <>
-              <div className="bg-white p-6 rounded-lg shadow-md mb-6">
+              <div className="bg-paper-card p-6 rounded-lg shadow-md mb-6">
                 <div className="flex items-center gap-6">
-                  <div className="w-24 h-24 rounded-full bg-gray-200 flex items-center justify-center">
-                    <User className="w-12 h-12 text-gray-500" />
+                  <div className="w-24 h-24  bg-paper-sunk flex items-center justify-center">
+                    <User className="w-12 h-12 text-ink-soft" />
                   </div>
                   <div className="flex-1">
-                    <h2 className="text-2xl font-bold text-gray-900">{selectedPlayer.name}</h2>
-                    <div className="text-gray-600 mt-1">
+                    <h2 className="text-2xl font-bold text-ink">{selectedPlayer.name}</h2>
+                    <div className="text-ink-soft mt-1">
                       {selectedPlayer.position} • {selectedPlayer.nationality}
-                      <span className="text-gray-400" title="Age not available in the current data source">
+                      <span className="text-ink-faint" title="Age not available in the current data source">
                         {' '}• age n/a
                       </span>
                     </div>
-                    <div className="text-gray-600">
+                    <div className="text-ink-soft">
                       {typeof selectedPlayer.marketValue === 'number'
                         ? `€${(selectedPlayer.marketValue / 1000000).toFixed(1)}M`
                         : '—'}
-                      <span className="text-gray-400 text-sm" title="Kumu-estimated value derived from the performance index">
+                      <span className="text-ink-faint text-sm" title="Kumu-estimated value derived from the performance index">
                         {' '}(estimated)
                       </span>
                     </div>
@@ -234,9 +242,9 @@ const PlayerMatching: React.FC<PlayerMatchingProps> = ({
 
             </>
           ) : (
-            <div className="bg-gray-50 rounded-lg p-12 text-center">
-              <User className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600">Select a player to see matching teams</p>
+            <div className="bg-paper-sunk rounded-lg p-12 text-center">
+              <User className="w-16 h-16 text-ink-faint mx-auto mb-4" />
+              <p className="text-ink-soft">Select a player to see matching teams</p>
             </div>
           )}
         </div>

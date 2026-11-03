@@ -141,11 +141,12 @@ const DataUpload: React.FC = () => {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      <div className="bg-white border border-rule rounded-sm p-6">
+      <div className="bg-paper-card border border-rule rounded-sm p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="font-display text-4xl text-ink leading-tight">Your data</h2>
-            <p className="text-sm text-ink-soft mt-1 max-w-2xl">
+            <div className="label text-clay-ink mb-3">Your data · what your own files unlock</div>
+            <h2 className="font-display text-4xl md:text-5xl leading-none m-0">Your data</h2>
+            <p className="mt-4 max-w-read text-lg text-ink-soft">
               Kumü measures your players against the reference population, so a small
               squad still gets indices comparable to any other club's.
             </p>
@@ -160,7 +161,7 @@ const DataUpload: React.FC = () => {
       </div>
 
       {!signedIn && (
-        <div className="bg-white border border-rule rounded-sm p-6">
+        <div className="bg-paper-card border border-rule rounded-sm p-6">
           <h3 className="font-medium text-ink mb-1">Sign in</h3>
           <p className="text-sm text-ink-soft mb-4">
             You can check a file without an account. Saving it needs a sign-in.
@@ -173,14 +174,14 @@ const DataUpload: React.FC = () => {
               placeholder="password" autoComplete="current-password"
               className="flex-1 min-w-[200px] px-3 py-2 border rounded-sm text-sm" />
             <button onClick={login} disabled={busy || !email || !password}
-              className="px-4 py-2 bg-field text-white rounded-sm text-sm hover:bg-field-dark disabled:opacity-50 flex items-center gap-2">
+              className="px-4 py-2 bg-field text-paper rounded-sm text-sm hover:bg-field-dark disabled:opacity-50 flex items-center gap-2">
               <LogIn className="w-4 h-4" /> Sign in
             </button>
           </div>
         </div>
       )}
 
-      <div className="bg-white border border-rule rounded-sm p-6">
+      <div className="bg-paper-card border border-rule rounded-sm p-6">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-medium text-ink">Your file</h3>
           <div className="flex items-center gap-3">
@@ -205,23 +206,23 @@ const DataUpload: React.FC = () => {
         )}
         <div className="flex gap-3 mt-4">
           <button onClick={validate} disabled={busy || !parsed}
-            className="px-4 py-2 border border-green-600 text-field-dark rounded-sm text-sm hover:bg-field-wash disabled:opacity-50">
+            className="px-4 py-2 border border-ink text-field-dark rounded-sm text-sm hover:bg-field-wash disabled:opacity-50">
             Check
           </button>
           <button onClick={upload} disabled={busy || !parsed || !report || !signedIn}
-            className="px-4 py-2 bg-field text-white rounded-sm text-sm hover:bg-field-dark disabled:opacity-50 flex items-center gap-2">
+            className="px-4 py-2 bg-field text-paper rounded-sm text-sm hover:bg-field-dark disabled:opacity-50 flex items-center gap-2">
             <Upload className="w-4 h-4" /> Save to Kumü
           </button>
         </div>
         {error && (
-          <p className="text-sm text-red-700 mt-3 flex items-start gap-2">
+          <p className="text-sm text-loss mt-3 flex items-start gap-2">
             <XCircle className="w-4 h-4 mt-0.5 shrink-0" /> {error}
           </p>
         )}
       </div>
 
       {report && (
-        <div className="bg-white border border-rule rounded-sm p-6">
+        <div className="bg-paper-card border border-rule rounded-sm p-6">
           <h3 className="font-medium text-ink mb-1">What this file unlocks</h3>
           <p className="text-sm text-ink-soft mb-4">
             {report.players_received} {report.players_received === 1 ? 'player' : 'players'}{report.club ? ` · ${report.club}` : ''}
@@ -233,7 +234,7 @@ const DataUpload: React.FC = () => {
                   ? <CheckCircle2 className="w-4 h-4 text-field mt-0.5 shrink-0" />
                   : <XCircle className="w-4 h-4 text-ink-faint mt-0.5 shrink-0" />}
                 <div className="min-w-0">
-                  <div className="text-sm font-medium text-gray-800">{CAPABILITY_LABELS[key] ?? key.replace(/_/g, ' ')}</div>
+                  <div className="text-sm font-medium text-ink">{CAPABILITY_LABELS[key] ?? key.replace(/_/g, ' ')}</div>
                   <div className="text-xs text-ink-soft">{cap.requires}</div>
                 </div>
               </div>
@@ -242,7 +243,7 @@ const DataUpload: React.FC = () => {
           {(report.warnings || []).length > 0 && (
             <div className="mt-4 p-3 rounded-sm bg-flag-wash border border-flag">
               {report.warnings.map((w: string, i: number) => (
-                <p key={i} className="text-sm text-amber-800 flex items-start gap-2">
+                <p key={i} className="text-sm text-flag flex items-start gap-2">
                   <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" /> {w}
                 </p>
               ))}
@@ -257,7 +258,7 @@ const DataUpload: React.FC = () => {
       )}
 
       {result && (
-        <div className="bg-white border border-rule rounded-sm p-6 border-l-4 border-green-600">
+        <div className="bg-paper-card border border-rule rounded-sm p-6 border-l-4 border-ink">
           <h3 className="font-medium text-ink mb-2">Loaded</h3>
           <p className="text-sm text-ink-soft">
             {result.result.players_written}{' '}

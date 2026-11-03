@@ -36,7 +36,7 @@ const MatchCard: React.FC<{
   return (
     <div
       onClick={onClick}
-      className={`bg-white border p-5 cursor-pointer transition-colors ${
+      className={`bg-paper-card border p-5 cursor-pointer transition-colors ${
         isSelected ? 'border-field' : 'border-rule hover:border-rule-strong'
       }`}
     >

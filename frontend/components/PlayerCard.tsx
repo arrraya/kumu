@@ -18,44 +18,44 @@ const PlayerCard: React.FC<PlayerCardProps> = ({ player, onClick, isSelected }) 
   
   return (
     <div 
-      className={`bg-white rounded-lg shadow-md p-6 cursor-pointer transition-all hover:shadow-lg ${
-        isSelected ? 'ring-2 ring-blue-500' : ''
+      className={`bg-paper-card rounded-lg shadow-md p-6 cursor-pointer transition-all hover:shadow-lg ${
+        isSelected ? 'ring-2 ring-ink' : ''
       }`}
       onClick={onClick}
     >
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center">
-            <User className="w-6 h-6 text-gray-600" />
+          <div className="w-12 h-12 bg-paper-sunk rounded-full flex items-center justify-center">
+            <User className="w-6 h-6 text-ink-soft" />
           </div>
           <div>
             <h3 className="font-semibold text-lg">{player.name}</h3>
-            <p className="text-sm text-gray-500">{player.position}</p>
+            <p className="text-sm text-ink-soft">{player.position}</p>
           </div>
         </div>
       </div>
       
       <div className="space-y-2">
         <div className="flex items-center gap-2">
-          <Activity className="w-3 h-3 text-gray-400" />
-          <span className="text-gray-600">
+          <Activity className="w-3 h-3 text-ink-faint" />
+          <span className="text-ink-soft">
             {performanceValue > 0 ? `Index: ${performanceValue.toFixed(1)}` : 'Index: not enough matches'}
           </span>
         </div>
         <div className={`flex items-center gap-1 ${
-          trend > 0 ? 'text-green-600' : trend < 0 ? 'text-red-600' : 'text-gray-600'
+          trend > 0 ? 'text-ink' : trend < 0 ? 'text-loss' : 'text-ink-soft'
         }`}>
           <span className="text-sm">
             Trend: {trend > 0 ? '+' : ''}{trend.toFixed(1)}
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <Flag className="w-3 h-3 text-gray-400" />
-          <span className="text-sm text-gray-600">{player.nationality}</span>
+          <Flag className="w-3 h-3 text-ink-faint" />
+          <span className="text-sm text-ink-soft">{player.nationality}</span>
         </div>
         <div className="flex items-center gap-2">
-          <DollarSign className="w-3 h-3 text-gray-400" />
-          <span className="text-sm text-gray-600">
+          <DollarSign className="w-3 h-3 text-ink-faint" />
+          <span className="text-sm text-ink-soft">
             €{(marketValue / 1000000).toFixed(1)}M
           </span>
         </div>

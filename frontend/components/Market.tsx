@@ -176,9 +176,10 @@ const Market: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-6">
-        <h1 className="font-display text-4xl text-ink leading-tight">Market</h1>
-        <p className="text-ink-soft mt-1">
+      <div className="masthead">
+        <div className="label text-clay-ink mb-3">Market · derived prices, not observed fees</div>
+        <h1 className="font-display text-4xl md:text-5xl leading-none m-0">Market</h1>
+        <p className="mt-4 max-w-read text-lg text-ink-soft">
           Prices derived from match-by-match performance against positional peers.
           <span className="text-ink-faint"> Analytical construct, not observed transfer data.</span>
         </p>
@@ -186,27 +187,29 @@ const Market: React.FC = () => {
 
       {summary && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white border border-rule rounded-sm p-4">
-            <div className="text-2xl font-bold">{summary.listed_players}</div>
-            <div className="text-sm text-ink-soft">Listed players</div>
+          <div className="border-t-2 border-ink pt-3">
+            <div className="figure">{summary.listed_players}</div>
+            <div className="label mt-2">Listed players</div>
           </div>
-          <div className="bg-white border border-rule rounded-sm p-4">
-            <div className="text-2xl font-bold">€{(summary.total_market_cap / 1e9).toFixed(2)}B</div>
-            <div className="text-sm text-ink-soft">Market cap</div>
+          <div className="border-t-2 border-ink pt-3">
+            {/* Every price in this sum is Kumü's own derivation, so the total
+                carries the same mark each component value does. */}
+            <div className="figure is-estimated">€{(summary.total_market_cap / 1e9).toFixed(2)}B</div>
+            <div className="label mt-2">Market cap</div>
           </div>
-          <div className="bg-white border border-rule rounded-sm p-4">
-            <div className="text-2xl font-bold text-field">{summary.risers}</div>
-            <div className="text-sm text-ink-soft">Risers</div>
+          <div className="border-t-2 border-ink pt-3">
+            <div className="figure">{summary.risers}</div>
+            <div className="label mt-2">Risers</div>
           </div>
-          <div className="bg-white border border-rule rounded-sm p-4">
-            <div className="text-2xl font-bold text-loss">{summary.fallers}</div>
-            <div className="text-sm text-ink-soft">Fallers</div>
+          <div className="border-t-2 border-ink pt-3">
+            <div className="figure text-loss">{summary.fallers}</div>
+            <div className="label mt-2">Fallers</div>
           </div>
         </div>
       )}
 
       {portfolio.length > 0 && (
-        <div className="bg-white border border-rule rounded-sm p-4 mb-6 flex flex-wrap items-center gap-6">
+        <div className="bg-paper-card border border-rule rounded-sm p-4 mb-6 flex flex-wrap items-center gap-6">
           <div className="flex items-center gap-2 text-ink-soft font-medium">
             <Wallet className="w-4 h-4" /> Portfolio
           </div>
@@ -221,7 +224,7 @@ const Market: React.FC = () => {
         </div>
       )}
 
-      <div className="bg-white border border-rule rounded-sm mb-6">
+      <div className="bg-paper-card border border-rule rounded-sm mb-6">
         <div className="flex flex-wrap items-center gap-3 p-4 border-b">
           {(['market', 'watchlist', 'portfolio'] as const).map((t) => (
             <button key={t} onClick={() => setTab(t)}
@@ -289,7 +292,7 @@ const Market: React.FC = () => {
                       <td className="px-3 py-2">
                         <button onClick={() => toggleWatch(r.player_id)} title="Watch">
                           <Star className={`w-4 h-4 ${
-                            watchlist.includes(r.player_id) ? 'text-yellow-500 fill-yellow-400' : 'text-gray-300'}`} />
+                            watchlist.includes(r.player_id) ? 'text-clay fill-clay' : 'text-ink-faint'}`} />
                         </button>
                       </td>
                       <td className="px-3 py-2">
@@ -314,9 +317,9 @@ const Market: React.FC = () => {
                       <td className="px-3 py-2 text-right text-ink-faint">{r.volatility.toFixed(1)}</td>
                       <td className="px-3 py-2 text-right whitespace-nowrap">
                         <button onClick={() => openDetail(r.player_id)}
-                          className="px-2 py-1 text-xs rounded bg-green-600 text-white mr-1">Trade</button>
+                          className="px-2 py-1 text-xs rounded bg-ink text-paper mr-1">Trade</button>
                         <button onClick={() => sellOne(r.player_id, r.current_price)} disabled={!held}
-                          className="px-2 py-1 text-xs rounded bg-gray-200 text-ink-soft disabled:opacity-40">Sell</button>
+                          className="px-2 py-1 text-xs rounded bg-paper-sunk text-ink-soft disabled:opacity-40">Sell</button>
                       </td>
                     </tr>
                   )
@@ -328,9 +331,9 @@ const Market: React.FC = () => {
       </div>
 
       {(selected || detailLoading) && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50"
+        <div className="fixed inset-0 bg-ink/40 flex items-center justify-center p-4 z-50"
           onClick={() => setSelected(null)}>
-          <div className="bg-white border border-rule rounded-sm-xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto"
+          <div className="bg-paper-card border border-rule rounded-sm-xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}>
             {detailLoading || !selected ? (
               <p className="text-ink-faint">Loading…</p>
@@ -372,7 +375,7 @@ const Market: React.FC = () => {
                       goals: s.goals, assists: s.assists,
                     }))}
                     margin={{ top: 10, right: 10, bottom: 5, left: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="#D8D7CC" />
                     <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                     <YAxis tick={{ fontSize: 11 }} domain={['dataMin - 3', 'dataMax + 3']}
                       tickFormatter={(v) => `€${v.toFixed(0)}M`} />
@@ -380,7 +383,7 @@ const Market: React.FC = () => {
                       if (!active || !payload?.length) return null
                       const d = payload[0].payload
                       return (
-                        <div className="bg-white border rounded-md px-3 py-2 shadow-sm text-xs">
+                        <div className="bg-paper-card border rounded-md px-3 py-2 shadow-sm text-xs">
                           <p className="font-medium">Match {String(label).replace('M', '')}</p>
                           <p className="text-field-dark">€{d.price.toFixed(1)}M ({pct(d.change)})</p>
                           {(d.goals > 0 || d.assists > 0) && (
@@ -388,16 +391,16 @@ const Market: React.FC = () => {
                         </div>
                       )
                     }} />
-                    <Line type="monotone" dataKey="price" stroke="#16a34a" strokeWidth={2} dot={{ r: 3 }} />
+                    <Line type="monotone" dataKey="price" stroke="#C25A3A" strokeWidth={2} dot={{ r: 3 }} />
                     {entryPoint && (
                       <ReferenceDot x={`M${entryPoint.match}`} y={entryPoint.price / 1_000_000}
-                        r={6} fill="#2563eb" stroke="white" strokeWidth={2} />
+                        r={6} fill="#3A5A7A" stroke="white" strokeWidth={2} />
                     )}
                   </LineChart>
                 </ResponsiveContainer>
 
                 <div className="mt-4 border-t pt-4">
-                  <div className="text-sm font-medium text-gray-800 mb-2">
+                  <div className="text-sm font-medium text-ink mb-2">
                     Entry point
                     <span className="font-normal text-ink-faint">
                       {' '}— pick the match you would have bought at
@@ -408,8 +411,8 @@ const Market: React.FC = () => {
                       <button key={s.match} onClick={() => setEntryMatch(s.match)}
                         className={`px-2 py-1 rounded text-xs border ${
                           entryMatch === s.match
-                            ? 'bg-paper-sunk border-blue-400 text-blue-700 font-medium'
-                            : 'border-rule text-ink-soft hover:border-gray-400'}`}>
+                            ? 'bg-paper-sunk border-slate text-slate-ink font-medium'
+                            : 'border-rule text-ink-soft hover:border-rule-strong'}`}>
                         M{s.match} · {money(s.price)}
                       </button>
                     ))}
@@ -425,12 +428,12 @@ const Market: React.FC = () => {
                       </span>
                       <div className="flex-1" />
                       <button onClick={buyAtEntry} disabled={cash < entryPoint.price}
-                        className="px-3 py-1.5 rounded bg-green-600 text-white text-sm disabled:opacity-40">
+                        className="px-3 py-1.5 rounded bg-ink text-paper text-sm disabled:opacity-40">
                         Buy at M{entryPoint.match}
                       </button>
                       <button onClick={() => sellOne(selected.player_id, selected.current_price)}
                         disabled={!portfolio.some((h) => h.player_id === selected.player_id)}
-                        className="px-3 py-1.5 rounded bg-gray-200 text-ink-soft text-sm disabled:opacity-40">
+                        className="px-3 py-1.5 rounded bg-paper-sunk text-ink-soft text-sm disabled:opacity-40">
                         Sell one
                       </button>
                     </div>
