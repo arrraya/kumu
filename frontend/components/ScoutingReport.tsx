@@ -294,7 +294,20 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
     </div>
   );
 
-  const RiskMeter = ({ score, level }: { score: number | null; level: string | null }) => {
+  const RiskMeter = ({
+    score,
+    level,
+    basis,
+  }: {
+    score: number | null;
+    level: string | null;
+    // Passed in rather than read off `report` from the enclosing scope:
+    // TypeScript narrows `report` where it is rendered, not inside a
+    // nested component, so the closure saw it as possibly null and the
+    // production build refused to compile. A prop is also the honest
+    // shape - the meter already takes everything else it draws.
+    basis?: string | null;
+  }) => {
     // An unassessed overall risk has no needle to point and no percentage to
     // print. It used to arrive as a number because every sub-risk reported one
     // whether or not it had anything to measure.
@@ -303,8 +316,7 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
         <div className="border border-dashed border-rule-strong p-6 max-w-read">
           <h4 className="label mb-2">Overall risk — not assessed</h4>
           <p className="text-sm text-ink-soft">
-            {report.risk_assessment.risk_basis ??
-              'No risk could be assessed from this source.'}
+            {basis ?? 'No risk could be assessed from this source.'}
           </p>
         </div>
       );
@@ -831,7 +843,11 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
          <h3 className="text-xl font-semibold mb-6">Risk Assessment</h3>
          
          <div className="mb-6">
-           <RiskMeter score={report.risk_assessment.risk_score} level={report.risk_assessment.overall_risk_level} />
+           <RiskMeter
+             score={report.risk_assessment.risk_score}
+             level={report.risk_assessment.overall_risk_level}
+             basis={report.risk_assessment.risk_basis}
+           />
          </div>
 
          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
