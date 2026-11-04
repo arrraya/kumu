@@ -1215,9 +1215,31 @@ class ScoutingReportGenerator:
         return comparables
 
     def _assess_value(self, current_value: float, comparable_players: List[Dict]) -> Dict:
-        """Assess if player represents good value"""
-        avg_comparable_fee = np.mean([p["transfer_fee"] for p in comparable_players])
+        """Assess if player represents good value against Kumü-valued peers.
 
+        Not against transfers. Every comparable here is a row from Kumu's own
+        database whose "fee" is Kumu's own estimated market value — each one
+        carries basis="Kumu database peer (estimated value)" and says so. The
+        reader-facing line nonetheless read "+6.5% vs similar transfers", two
+        panels below a caveat stating that no observed transfer fee enters any
+        calculation. One of the two was wrong, and it was not the caveat.
+        """
+        fees = [
+            p["transfer_fee"] for p in comparable_players
+            if isinstance(p.get("transfer_fee"), (int, float)) and p["transfer_fee"] > 0
+        ]
+        if not fees:
+            # np.mean([]) is nan, and nan / anything printed "nan% vs similar
+            # transfers" on the page.
+            return {
+                "assessment": "Not assessed",
+                "recommendation": "No valued peers in the same position to compare against.",
+                "value_ratio": None,
+                "vs_comparables": None,
+                "basis": "No comparable players with an assessed value were found.",
+            }
+
+        avg_comparable_fee = float(np.mean(fees))
         value_ratio = current_value / avg_comparable_fee
 
         if value_ratio < 0.85:
@@ -1234,7 +1256,14 @@ class ScoutingReportGenerator:
             "assessment": assessment,
             "recommendation": recommendation,
             "value_ratio": value_ratio,
-            "vs_comparables": f"{((value_ratio - 1) * 100):+.1f}% vs similar transfers",
+            # Short: the label beside it already says these are valued peers,
+            # and the basis below spells out what that means.
+            "vs_comparables": f"{((value_ratio - 1) * 100):+.1f}% ({len(fees)} peers)",
+            "basis": (
+                f"Compared against {len(fees)} players in Kumü's database with the "
+                f"closest index in the same position. Their values are Kumü "
+                f"estimates, not observed transfer fees."
+            ),
         }
 
     # Years of contribution counted in the ROI. Declared curation: a typical
@@ -1909,14 +1938,13 @@ class ScoutingReportGenerator:
         # Create negotiation timeline
         timeline = self._create_negotiation_timeline(player_data)
 
+        offer_strategy = self._build_offer_strategy(
+            player_data, team_data, opening_offer
+        )
+
         return {
             "negotiation_position": position_strength,
-            "offer_strategy": {
-                "opening_offer": opening_offer,
-                "maximum_offer": opening_offer * 1.25,
-                "walk_away_price": opening_offer * 1.35,
-                "payment_structure": self._recommend_payment_structure(opening_offer, team_data),
-            },
+            "offer_strategy": offer_strategy,
             "key_negotiation_points": negotiation_points,
             "leverage_factors": self._identify_leverage_factors(player_data, team_data),
             "timeline": timeline,
@@ -1924,40 +1952,164 @@ class ScoutingReportGenerator:
             "contingency_plans": self._create_contingency_plans(player_data),
         }
 
+    # The four facts that decide who holds the cards in a transfer. Kumü
+    # carries none of them today: they arrive with a client's own data or a
+    # contracts feed.
+    NEGOTIATION_INPUTS = (
+        "contract_expires_months", "wants_move", "club_needs_sale", "alternative_targets",
+    )
+
     def _assess_negotiation_position(self, player_data: Dict, team_data: Dict) -> Dict:
-        """Assess strength of negotiating position"""
-        strength_score = 50  # Base score
+        """How strong the buyer's hand is — or that it cannot be judged.
+
+        This returned exactly 50 for every player in the database, every time,
+        and called it "Weak".
+
+        Two faults produced that. The scale only went up: four factors could
+        add to the base of 50 and nothing could subtract, so 50 was the floor
+        rather than the middle, and the threshold ">50" then labelled the floor
+        "Weak". And all four factors read fields Kumü does not carry — contract
+        length, whether the player wants to move, whether the selling club
+        needs the money, whether the buyer has alternatives — each with a
+        default that awards no bonus. A constant was being presented as an
+        assessment, and it set every opening offer in the product at 0.95x
+        value because "Weak" selects that multiplier.
+
+        Now: absent every input, the position is not assessed and says so.
+        Present, the scale runs both ways, because a long contract and a seller
+        under no pressure genuinely weaken a buyer.
+        """
+        present = [
+            k for k in self.NEGOTIATION_INPUTS
+            if player_data.get(k) is not None or team_data.get(k) is not None
+        ]
+        if not present:
+            return {
+                "strength": None,
+                "score": None,
+                "factors": [],
+                "basis": (
+                    "Not assessed: this source carries no contract length, no "
+                    "indication the player wants to move, and no alternative "
+                    "targets. Supply any of them and a position appears."
+                ),
+            }
+
+        strength_score = 50
         factors = []
 
-        # Contract situation
-        if player_data.get("contract_expires_months", 24) < 12:
-            strength_score += 20
-            factors.append("Player in final year of contract")
-        elif player_data.get("contract_expires_months", 24) < 24:
-            strength_score += 10
-            factors.append("Contract expiring soon")
+        meses = player_data.get("contract_expires_months")
+        if isinstance(meses, (int, float)):
+            if meses < 12:
+                strength_score += 20
+                factors.append("Player in final year of contract")
+            elif meses < 24:
+                strength_score += 10
+                factors.append("Contract expiring soon")
+            elif meses >= 36:
+                # Tied down for three more years: the seller can simply say no.
+                strength_score -= 15
+                factors.append("Three or more years left on the contract")
 
-        # Player desire to move
-        if player_data.get("wants_move", False):
+        if player_data.get("wants_move"):
             strength_score += 15
             factors.append("Player wants transfer")
 
-        # Alternative options
-        if len(team_data.get("alternative_targets", [])) > 2:
-            strength_score += 10
-            factors.append("Multiple alternative targets available")
+        alternativas = team_data.get("alternative_targets")
+        if isinstance(alternativas, list):
+            if len(alternativas) > 2:
+                strength_score += 10
+                factors.append("Multiple alternative targets available")
+            elif not alternativas:
+                strength_score -= 10
+                factors.append("No alternative target identified")
 
-        # Selling club's financial situation
-        if player_data.get("club_needs_sale", False):
+        if player_data.get("club_needs_sale") is True:
             strength_score += 15
             factors.append("Selling club needs funds")
+        elif player_data.get("club_needs_sale") is False:
+            strength_score -= 10
+            factors.append("Selling club under no pressure to sell")
 
+        strength_score = max(0, min(100, strength_score))
         return {
+            # 50 is the middle of a two-sided scale, so it reads Balanced. It
+            # used to read Weak, which made the one value the function could
+            # return sound like a finding.
             "strength": (
-                "Strong" if strength_score > 70 else "Moderate" if strength_score > 50 else "Weak"
+                "Strong" if strength_score > 65
+                else "Balanced" if strength_score >= 40
+                else "Weak"
             ),
             "score": strength_score,
             "factors": factors,
+            "basis": "Assessed from " + ", ".join(
+                k.replace("_", " ") for k in present
+            ) + ".",
+        }
+
+    # DECIDED: how far above a player's assessed value a club should be
+    # willing to go when another club is bidding. Declared, not measured —
+    # Kumu has no observed auctions to fit it to.
+    COMPETITIVE_ALLOWANCE = 0.15
+
+    def _build_offer_strategy(
+        self, player_data: Dict, team_data: Dict, opening_offer: float
+    ) -> Dict:
+        """Opening, target and ceiling — three prices that mean three things.
+
+        This used to be opening, opening x 1.25 and opening x 1.35, labelled
+        "maximum offer" and "walk-away price". Two faults.
+
+        The first is that a maximum offer and a walk-away price are the same
+        quantity seen from either side: if the most you will pay is 86, then 86
+        is where you leave. Giving them different multipliers invented a seven
+        million dead zone where a buyer would neither bid nor walk.
+
+        The second is worse. The ceiling was a multiple of the OPENING, and the
+        opening falls as your negotiating position strengthens — so the
+        stronger your hand, the less the player was apparently worth to you. A
+        club with leverage ended up with a ceiling at 1.01x his value and a
+        club without one at 1.28x. Leverage should let a buyer pay less, not
+        change what the player is worth to them.
+
+        So the opening stays tactical and the ceiling becomes economic: the
+        assessed value plus a declared allowance for being outbid. The target
+        sits between them, which is where these actually settle.
+        """
+        value = self._market_value(player_data)
+        if not isinstance(value, (int, float)) or value <= 0:
+            return {
+                "opening_offer": opening_offer,
+                "target_offer": None,
+                "maximum_offer": None,
+                "walk_away_price": None,
+                "basis": (
+                    "No ceiling: this player has no assessed value to anchor one to."
+                ),
+                "payment_structure": self._recommend_payment_structure(opening_offer, team_data),
+            }
+
+        ceiling = value * (1 + self.COMPETITIVE_ALLOWANCE)
+        # An opening above the ceiling would be incoherent; it cannot happen
+        # with the current multipliers, but the ceiling is the binding number
+        # and should be the one that holds if they ever change.
+        opening = min(opening_offer, ceiling)
+        target = (opening + ceiling) / 2
+
+        return {
+            "opening_offer": opening,
+            "target_offer": target,
+            "maximum_offer": ceiling,
+            # Same number by definition. Kept so nothing downstream breaks, and
+            # so the report can say plainly that they are one price.
+            "walk_away_price": ceiling,
+            "basis": (
+                f"Ceiling is the assessed value plus a declared "
+                f"{int(self.COMPETITIVE_ALLOWANCE * 100)}% allowance for competing bids. "
+                f"It is also the walk-away: above it the signing stops being worth making."
+            ),
+            "payment_structure": self._recommend_payment_structure(opening, team_data),
         }
 
     def _calculate_opening_offer(
@@ -1966,13 +2118,18 @@ class ScoutingReportGenerator:
         """Calculate strategic opening offer"""
         market_value = self._market_value(player_data)
 
-        # Base on negotiation strength
-        if position_strength["strength"] == "Strong":
+        # Base on negotiation strength. An unassessed position opens at the
+        # balanced multiplier rather than at the one reserved for a weak hand:
+        # not knowing who holds the cards is not the same as knowing you do
+        # not, and the old code quietly treated it as the latter for every
+        # player in the database.
+        fuerza = position_strength.get("strength")
+        if fuerza == "Strong":
             multiplier = 0.75
-        elif position_strength["strength"] == "Moderate":
-            multiplier = 0.85
-        else:
+        elif fuerza == "Weak":
             multiplier = 0.95
+        else:  # "Balanced", or not assessed
+            multiplier = 0.85
 
         # Adjust for market conditions
         if market_analysis["value_assessment"]["assessment"] == "Overvalued":
@@ -2022,21 +2179,46 @@ class ScoutingReportGenerator:
         our_leverage = []
         their_leverage = []
 
-        # Our leverage
-        if player_data.get("contract_expires_months", 24) < 18:
+        # Our leverage. Every test below asks whether a fact is PRESENT.
+        #
+        # The third one used to read "if not player_data.get(
+        # 'other_interested_clubs')" - and since Kumu does not carry that
+        # field, get() returned None, not-None was True, and every player
+        # in the database was awarded "Limited competition for signature".
+        # The absence of knowledge about rival bidders was being printed as
+        # knowledge that there are none. With the other side's three tests
+        # all defaulting to False, the balance came out 1-0 and the report
+        # told the buying club the leverage was theirs. For everyone.
+        #
+        # An unanswered question is not a point in anyone's favour.
+        meses = player_data.get("contract_expires_months")
+        if isinstance(meses, (int, float)) and meses < 18:
             our_leverage.append("Short contract remaining")
         if team_data.get("alternative_targets"):
             our_leverage.append("Alternative options available")
-        if not player_data.get("other_interested_clubs"):
-            our_leverage.append("Limited competition for signature")
+        rivales = player_data.get("other_interested_clubs")
+        if rivales is not None and len(rivales) == 0:
+            our_leverage.append("No other clubs recorded as interested")
 
         # Their leverage
-        if player_data.get("key_player", False):
+        if player_data.get("key_player") is True:
             their_leverage.append("Key player for selling club")
-        if player_data.get("long_contract", False):
+        if player_data.get("long_contract") is True:
             their_leverage.append("Long contract remaining")
-        if player_data.get("multiple_suitors", False):
+        if player_data.get("multiple_suitors") is True:
             their_leverage.append("Multiple clubs interested")
+
+        if not our_leverage and not their_leverage:
+            return {
+                "our_leverage": [],
+                "their_leverage": [],
+                "balance": None,
+                "basis": (
+                    "Not assessed: no contract length, no recorded rival "
+                    "interest and no alternative targets. Supply any of "
+                    "them and the balance appears."
+                ),
+            }
 
         return {
             "our_leverage": our_leverage,
@@ -2046,28 +2228,43 @@ class ScoutingReportGenerator:
                 if len(our_leverage) > len(their_leverage)
                 else "Balanced" if len(our_leverage) == len(their_leverage) else "In their favor"
             ),
+            "basis": "Weighed over %d declared factor(s)." % (
+                len(our_leverage) + len(their_leverage)
+            ),
         }
 
     def _create_negotiation_timeline(self, player_data: Dict) -> Dict:
-        """Create recommended negotiation timeline"""
-        urgency = "High" if player_data.get("multiple_suitors", False) else "Medium"
+        """Recommended pace. Unlike the rest of this section, a default here
+        is defensible: with no evidence of rival bidders, an unhurried
+        schedule IS the right advice. What was not defensible was printing
+        it as though it had been read off the case. The compressed branch
+        has never once fired, because "multiple_suitors" is a field Kumu
+        does not carry, so every report in the product shows the patient
+        schedule below. It now says so.
+        """
+        apurados = player_data.get("multiple_suitors") is True
 
-        if urgency == "High":
-            timeline = {
+        if apurados:
+            return {
+                "urgency": "High",
                 "initial_contact": "Immediately",
                 "first_offer": "Within 48 hours",
                 "negotiation_window": "1-2 weeks",
                 "decision_deadline": "2 weeks",
-            }
-        else:
-            timeline = {
-                "initial_contact": "Within 1 week",
-                "first_offer": "Within 2 weeks",
-                "negotiation_window": "2-4 weeks",
-                "decision_deadline": "4-6 weeks",
+                "basis": "Compressed: other clubs recorded as interested.",
             }
 
-        return timeline
+        return {
+            "urgency": "Standard",
+            "initial_contact": "Within 1 week",
+            "first_offer": "Within 2 weeks",
+            "negotiation_window": "2-4 weeks",
+            "decision_deadline": "4-6 weeks",
+            "basis": (
+                "Standard pace - no rival interest recorded. Record a "
+                "competing bidder and this compresses."
+            ),
+        }
 
     def _recommend_payment_structure(self, total_fee: float, team_data: Dict) -> Dict:
         """Recommend payment structure"""
@@ -2089,28 +2286,54 @@ class ScoutingReportGenerator:
             }
 
     def _recommend_negotiation_tactics(self, position_strength: Dict) -> List[str]:
-        """Recommend specific negotiation tactics"""
-        if position_strength["strength"] == "Strong":
+        """Tactics that follow from the assessed position - or from its absence.
+
+        Two things were wrong here. The middle branch tested for "Moderate",
+        a label this generator never emits: the scale produces Strong /
+        Balanced / Weak. So every balanced position fell through to the else
+        and was handed the tactics of a weak one.
+
+        And the else also caught the unassessed case, which is every player
+        in the database today. It advised "emphasize the player's desire to
+        join" about a player whose desire to move is precisely one of the
+        four facts we have just finished declaring we do not have. Advice
+        that assumes the answer to the open question is worse than none.
+
+        So the unassessed branch recommends the only moves that are sound
+        without leverage: find out what the leverage is, and do not bid as
+        though you already knew.
+        """
+        fuerza = position_strength.get("strength")
+
+        if fuerza == "Strong":
             return [
-                "Start with aggressive opening offer",
-                "Set firm deadlines",
-                "Emphasize alternative options",
-                "Be prepared to walk away",
+                "Open below the valuation and hold there",
+                "Set a firm deadline",
+                "Name the alternative targets out loud",
+                "Be prepared to walk away at the ceiling",
             ]
-        elif position_strength["strength"] == "Moderate":
+        if fuerza == "Balanced":
             return [
-                "Build relationship first",
-                "Find win-win scenarios",
-                "Be flexible on payment terms",
-                "Focus on total package value",
+                "Open at a discount neither side can call insulting",
+                "Trade on structure - instalments, add-ons - before price",
+                "Keep a second target warm and visible",
+                "Agree the ceiling internally before the first call",
             ]
-        else:
+        if fuerza == "Weak":
             return [
-                "Emphasize player's desire to join",
-                "Highlight project ambition",
-                "Be flexible on all terms",
-                "Consider player exchange options",
+                "Expect to pay close to the valuation",
+                "Compete on project and minutes, not only on fee",
+                "Offer structure that helps the selling club's books",
+                "Fix the walk-away price in writing beforehand",
             ]
+
+        # Not assessed. Each of these produces one of NEGOTIATION_INPUTS.
+        return [
+            "Establish contract length remaining before making an offer",
+            "Find out whether the player wants the move",
+            "Find out whether the selling club needs the sale",
+            "Open at the assessed value, not above it, until leverage is known",
+        ]
 
     def _create_contingency_plans(self, player_data: Dict) -> List[Dict]:
         """Create contingency plans for negotiation scenarios"""

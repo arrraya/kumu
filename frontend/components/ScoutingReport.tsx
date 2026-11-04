@@ -95,7 +95,8 @@ interface ScoutingReportData {
       assessment: string;
       recommendation: string;
       value_ratio: number;
-      vs_comparables: string;
+      vs_comparables: string | null;
+      basis?: string | null;
     };
     value_projections: {
       [key: string]: { value: number; age: number; change_pct: number };
@@ -130,19 +131,24 @@ interface ScoutingReportData {
   };
   negotiation_strategy: {
     negotiation_position: {
-      strength: string;
-      score: number;
+      strength: string | null;
+      score: number | null;
       factors: string[];
+      basis?: string | null;
     };
     offer_strategy: {
       opening_offer: number;
-      maximum_offer: number;
-      walk_away_price: number;
+      target_offer: number | null;
+      maximum_offer: number | null;
+      walk_away_price: number | null;
+      basis?: string | null;
     };
     timeline: {
       initial_contact: string;
       first_offer: string;
       negotiation_window: string;
+      urgency?: string | null;
+      basis?: string | null;
     };
     tactics: string[];
   };
@@ -715,9 +721,22 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
            <div>
              <h4 className="font-medium text-ink-soft mb-4">Financial Assessment</h4>
              <div className="space-y-3">
-               <div className="flex justify-between items-center p-3 bg-paper-sunk rounded">
-                 <span className="text-ink-soft mr-4">vs Comparable Transfers</span>
-                 <span className="font-medium">{report.market_analysis.value_assessment.vs_comparables}</span>
+               <div className="p-3 bg-paper-sunk">
+                 <div className="flex justify-between items-center gap-4">
+                   <span className="text-ink-soft">vs valued peers</span>
+                   <span className="font-medium tabular">
+                     {report.market_analysis.value_assessment.vs_comparables ?? '—'}
+                   </span>
+                 </div>
+                 {/* The comparison is against Kumü's own valuations of other
+                     players, not against transfers. The row used to be
+                     labelled "vs Comparable Transfers" two panels below a
+                     caveat saying no observed fee enters any calculation. */}
+                 {report.market_analysis.value_assessment.basis && (
+                   <p className="mt-2 text-xs text-ink-faint">
+                     {report.market_analysis.value_assessment.basis}
+                   </p>
+                 )}
                </div>
                <div className="flex justify-between items-center p-3 bg-paper-sunk rounded">
                  <span className="text-ink-soft">Breakeven Period</span>
@@ -864,30 +883,60 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
      <div className="bg-paper-card border border-rule rounded-sm p-6">
        <h3 className="text-xl font-semibold mb-6">Negotiation Strategy</h3>
        
-       <div className="mb-6 p-4 bg-field-wash rounded-sm">
-         <div className="flex items-center justify-between mb-2">
-           <span className="font-medium text-ink">Negotiation Position:</span>
-           <span className="text-lg font-bold text-field">{report.negotiation_strategy.negotiation_position.strength}</span>
+       {/* The score was 50 for every player in the database and the label
+           read "Weak", because the scale only went up from a base of 50 and
+           every input it reads is absent. A constant is not a position. */}
+       {report.negotiation_strategy.negotiation_position.strength === null ? (
+         <div className="mb-6 border border-dashed border-rule-strong p-4">
+           <h4 className="label mb-2">Negotiation position — not assessed</h4>
+           <p className="max-w-read text-sm text-ink-soft">
+             {report.negotiation_strategy.negotiation_position.basis ??
+               'This source carries none of the facts that decide who holds the cards.'}
+           </p>
          </div>
-         <div className="text-sm text-field-dark">
-           Score: {report.negotiation_strategy.negotiation_position.score}/100
+       ) : (
+         <div className="mb-6 bg-paper-sunk p-4">
+           <div className="flex items-center justify-between gap-4 mb-1">
+             <span className="label">Negotiation position</span>
+             <span className="font-display text-xl font-bold">
+               {report.negotiation_strategy.negotiation_position.strength}
+             </span>
+           </div>
+           <div className="text-sm text-ink-soft tabular">
+             {report.negotiation_strategy.negotiation_position.score}/100
+           </div>
+           {report.negotiation_strategy.negotiation_position.basis && (
+             <p className="mt-2 text-xs text-ink-faint">
+               {report.negotiation_strategy.negotiation_position.basis}
+             </p>
+           )}
          </div>
-       </div>
+       )}
 
-       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-         <div className="bg-field-wash p-4 rounded-sm text-center">
-           <div className="text-sm text-ink-soft">Opening Offer</div>
-           <div className="text-2xl font-bold text-field mt-1">{formatCurrency(report.negotiation_strategy.offer_strategy.opening_offer)}</div>
+       {/* Three prices that mean three things. There used to be a separate
+           "Maximum Offer" and "Walk-away Price" seven million apart, which is
+           a gap where a buyer would neither bid nor leave: they are one number
+           seen from either side. The middle tile is now the target, which is
+           where these settle. */}
+       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
+         <div className="bg-paper-sunk p-4 text-center">
+           <div className="label">Opening offer</div>
+           <div className="figure mt-2">{formatCurrency(report.negotiation_strategy.offer_strategy.opening_offer)}</div>
          </div>
-         <div className="bg-flag-wash p-4 rounded-sm text-center">
-           <div className="text-sm text-ink-soft">Maximum Offer</div>
-           <div className="text-2xl font-bold text-flag mt-1">{formatCurrency(report.negotiation_strategy.offer_strategy.maximum_offer)}</div>
+         <div className="bg-paper-sunk p-4 text-center">
+           <div className="label">Target</div>
+           <div className="figure mt-2">{formatCurrency(report.negotiation_strategy.offer_strategy.target_offer)}</div>
          </div>
-         <div className="bg-loss-wash p-4 rounded-sm text-center">
-           <div className="text-sm text-ink-soft">Walk-away Price</div>
-           <div className="text-2xl font-bold text-loss mt-1">{formatCurrency(report.negotiation_strategy.offer_strategy.walk_away_price)}</div>
+         <div className="bg-flag-wash p-4 text-center">
+           <div className="label text-flag">Maximum — and walk-away</div>
+           <div className="figure mt-2 text-flag">{formatCurrency(report.negotiation_strategy.offer_strategy.maximum_offer)}</div>
          </div>
        </div>
+       {report.negotiation_strategy.offer_strategy.basis && (
+         <p className="mb-6 max-w-read text-sm text-ink-soft">
+           {report.negotiation_strategy.offer_strategy.basis}
+         </p>
+       )}
 
        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
          <div>
@@ -915,6 +964,11 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
                </div>
              </div>
            </div>
+           {report.negotiation_strategy.timeline.basis && (
+             <p className="mt-3 max-w-read text-xs text-ink-faint">
+               {report.negotiation_strategy.timeline.basis}
+             </p>
+           )}
          </div>
          
          <div>

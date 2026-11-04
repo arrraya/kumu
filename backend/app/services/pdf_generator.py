@@ -944,6 +944,14 @@ class PDFReportGenerator:
         if offer_strategy:
             elements.append(Paragraph("<b>Offer Strategy:</b>", self.styles["SubSection"]))
             for key, value in offer_strategy.items():
+                # walk_away_price is the maximum offer by definition, so
+                # printing both listed one price twice under two names. The
+                # basis is a sentence, not a line item: it goes below as a
+                # caveat rather than as a bullet with a label in Title Case.
+                if key in ("walk_away_price", "basis"):
+                    continue
+                if value is None:
+                    continue
                 label = key.replace('_', ' ').title()
                 if isinstance(value, dict):
                     # Nested structure (e.g. payment_structure): render sub-items
@@ -968,15 +976,27 @@ class PDFReportGenerator:
             elements.append(Spacer(1, 0.1 * inch))
 
         # Timeline
+        if offer_strategy.get("basis"):
+            elements.append(Paragraph(offer_strategy["basis"], self.styles["Caveat"]))
+
         timeline = data.get("timeline", {})
         if timeline:
             elements.append(Paragraph("<b>Timeline:</b>", self.styles["SubSection"]))
+            # "urgency" and "basis" describe the schedule; they are not
+            # phases of it, and this loop would otherwise print them as two
+            # more bullet points between the dates.
             for phase, date in timeline.items():
+                if phase in ("urgency", "basis"):
+                    continue
                 elements.append(
                     Paragraph(
                         f"• {phase.replace('_', ' ').title()}: {date}",
                         self.styles["BodyText"],
                     )
+                )
+            if timeline.get("basis"):
+                elements.append(
+                    Paragraph(timeline["basis"], self.styles["Caveat"])
                 )
             elements.append(Spacer(1, 0.1 * inch))
 
