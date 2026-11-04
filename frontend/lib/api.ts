@@ -1,7 +1,13 @@
 import axios from 'axios';
 import { Player, Team, Match } from '@/types';
 
-const API_URL = 'https://kumu-production.up.railway.app';
+// The deployed backend stays the default, so production and anyone who just
+// runs `npm run dev` behave exactly as before. NEXT_PUBLIC_API_URL points the
+// app at a local backend instead — without it there was no way to exercise a
+// backend change from the UI short of editing this line and remembering to
+// put it back, which is how an edited line ends up committed.
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL || 'https://kumu-production.up.railway.app';
 
 const api = axios.create({
   baseURL: API_URL,

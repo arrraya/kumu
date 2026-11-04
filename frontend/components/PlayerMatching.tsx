@@ -116,7 +116,7 @@ const PlayerMatching: React.FC<PlayerMatchingProps> = ({
         <div className="label text-clay-ink mb-3">Player matching · which clubs fit</div>
         <h1 className="font-display text-4xl md:text-5xl leading-none m-0">Player matching</h1>
         <p className="mt-4 max-w-read text-lg text-ink-soft">
-          Pick a player and Kumü ranks the clubs he could join by how well the
+          Pick a player and Kumü ranks the clubs they could join by how well the
           squad, the style and the budget actually line up.
         </p>
       </div>

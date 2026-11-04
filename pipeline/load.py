@@ -6,7 +6,11 @@ Reads DATABASE_URL from the environment (Railway public URL).
 
 Honesty notes (contract E.5):
 - market_value is Kumu-ESTIMATED from performance index (declared, not scraped).
-- age is a neutral estimate (26) until a birth-date source is connected.
+- age is written as NULL until a birth-date source is connected. It used to be
+  written as 26, and an estimate stored in an integer column stops being an
+  estimate: every consumer downstream reads a number and cannot tell it from a
+  measurement. The scouting report duly judged career stage and printed
+  "Physical prime — 2 peak years remaining" for all 307 players.
 """
 import hashlib
 import os
@@ -18,7 +22,12 @@ from tqdm import tqdm
 
 CACHE_DIR = os.path.join(os.path.dirname(__file__), ".cache")
 MIN_MINUTES = 180          # at least ~2 full matches for stable metrics
-ESTIMATED_AGE = 26         # neutral placeholder until a birth-date source exists
+# No age is written. The generator has an assumed age for the places where the
+# arithmetic needs one, and it flags that assumption where the reader needs to
+# know — a distinction that only survives if the column stays empty. When a
+# birth-date source is connected, set the real age here and every age-dependent
+# judgement downstream starts working on its own.
+ESTIMATED_AGE = None
 LEAGUE_LABEL = "World Cup 2022"
 # Namespaces the identifier by source, so a future provider feed can coexist
 # with this one without ids colliding.

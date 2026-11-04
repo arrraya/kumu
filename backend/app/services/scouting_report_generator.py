@@ -1,6 +1,6 @@
 import numpy as np
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
 from enum import Enum
 
@@ -595,8 +595,15 @@ class ScoutingReportGenerator:
 
         # Check pressing fit
         if team_style.get("pressing_intensity", 0.5) > 0.7:
-            distance = metrics.get("movement", {}).get("distance_covered_per_90", 0)
-            if distance > 10:
+            # Without tracking there is no work rate to judge, and the old
+            # `.get(..., 0)` quietly answered "low" for everyone, awarding the
+            # smaller score and printing "may need to increase work rate" as
+            # if that were a reading of the player.
+            distance = (metrics.get("movement") or {}).get("distance_covered_per_90")
+            if distance is None:
+                compatibility_score += 17
+                notes.append("Work rate not assessed: this source carries no tracking data")
+            elif distance > 10:
                 compatibility_score += 25
                 notes.append("High work rate suits pressing system")
             else:
@@ -620,7 +627,9 @@ class ScoutingReportGenerator:
             return "Goal Threat"
         elif metrics["defensive"]["tackles_per_90"] > 3.0:
             return "Defensive Anchor"
-        elif metrics["movement"]["distance_covered_per_90"] > 11:
+        elif (metrics.get("movement") or {}).get("distance_covered_per_90", 0) > 11:
+            # KeyError for every player with no tracking block, which on this
+            # source is all of them.
             return "Box-to-Box"
         else:
             return "Balanced"
@@ -890,9 +899,31 @@ class ScoutingReportGenerator:
         "CB": "defense", "RB": "defense", "LB": "defense", "GK": "defense",
     }
 
+    # What a feed has to carry before an athletic score means anything.
+    MOVEMENT_INPUTS = ("average_speed", "distance_covered_per_90", "high_intensity_runs")
+
+    def _movement(self, player_data: Dict) -> Optional[Dict]:
+        """The movement inputs, or None when the source does not carry them.
+
+        An event feed records what happened to the ball, not how far a player
+        ran. Reading these with `.get(key, 0)` turned "we do not know" into
+        "zero", and zero over a reference value is a score of nought printed
+        as if it were a measurement — which is how this report came to show a
+        full athletic profile for a data source that has no tracking in it.
+
+        A genuine zero passes: the test is whether the number is there, not
+        whether it is large. When a provider API starts carrying these three
+        fields, every score below starts working with no further change.
+        """
+        movement = (player_data.get("metrics") or {}).get("movement") or {}
+        values = {k: movement.get(k) for k in self.MOVEMENT_INPUTS}
+        if all(isinstance(v, (int, float)) for v in values.values()):
+            return values
+        return None
+
     def generate_physical_profile(self, player_data: Dict) -> Dict:
         """Generate physical and athletic profile"""
-        metrics = player_data.get("metrics", {}).get("movement", {})
+        metrics = (player_data.get("metrics") or {}).get("movement") or {}
 
         # C14: one yardstick for every role penalised defenders and keepers,
         # who will never cover ground like a wide midfielder.
@@ -900,11 +931,53 @@ class ScoutingReportGenerator:
         group = self.PHYSICAL_GROUP.get(player_data.get("position"), "midfield")
         ref = self.PHYSICAL_REFERENCE[group]
 
-        speed_score = min((metrics.get("average_speed", 0) / ref["speed_kmh"]) * 100, 100)
-        endurance_score = min((metrics.get("distance_covered_per_90", 0) / ref["distance_km"]) * 100, 100)
-        intensity_score = min((metrics.get("high_intensity_runs", 0) / ref["runs"]) * 100, 100)
+        movement = self._movement(player_data)
+        if movement is None:
+            athletic_scores: Dict[str, Dict[str, Any]] = {}
+            athletic_basis = (
+                "No athletic profile: this source carries no tracking data "
+                "(distance, sprints, speed). Supply it and these scores appear."
+            )
+        else:
+            speed_score = min((movement["average_speed"] / ref["speed_kmh"]) * 100, 100)
+            endurance_score = min((movement["distance_covered_per_90"] / ref["distance_km"]) * 100, 100)
+            intensity_score = min((movement["high_intensity_runs"] / ref["runs"]) * 100, 100)
+            athletic_scores = {
+                "speed": {"score": speed_score, "rating": self._rate_physical_attribute(speed_score)},
+                "endurance": {"score": endurance_score, "rating": self._rate_physical_attribute(endurance_score)},
+                "intensity": {"score": intensity_score, "rating": self._rate_physical_attribute(intensity_score)},
+            }
+            athletic_basis = (
+                f"Scored against {group} reference values, not against other players. "
+                f"Mean {int((speed_score + endurance_score + intensity_score) / 3)}/100."
+            )
 
-        physical_age = self._age(player_data)
+        # The report states elsewhere that age is not carried and that no
+        # age-dependent judgement is made. This block used to call _age(),
+        # which quietly substitutes ASSUMED_AGE, and then built "Physical
+        # prime — 2 peak years remaining" out of it: an age-dependent
+        # judgement on an age the same report had just declared unknown.
+        if not self._has_age(player_data):
+            age_analysis = {
+                "current_age": None,
+                "development_stage": None,
+                "peak_years_remaining": None,
+                "basis": "Age is not carried by this source, so no career-stage judgement is made.",
+            }
+        else:
+            physical_age = self._age(player_data)
+            age_analysis = self._career_stage(physical_age)
+
+        return {
+            "athletic_scores": athletic_scores,
+            "athletic_scores_basis": athletic_basis,
+            "physical_age_analysis": age_analysis,
+            "injury_risk_factors": self._assess_injury_risk(player_data),
+            "physical_comparison": athletic_basis,
+        }
+
+    def _career_stage(self, physical_age: int) -> Dict:
+        """Career stage from a declared age. Never called without one."""
         if physical_age < 24:
             development_stage = "Still developing physically"
             peak_years_remaining = 5 + (28 - physical_age)
@@ -919,32 +992,10 @@ class ScoutingReportGenerator:
             peak_years_remaining = 0
 
         return {
-            "athletic_scores": {
-                "speed": {
-                    "score": speed_score,
-                    "rating": self._rate_physical_attribute(speed_score),
-                },
-                "endurance": {
-                    "score": endurance_score,
-                    "rating": self._rate_physical_attribute(endurance_score),
-                },
-                "intensity": {
-                    "score": intensity_score,
-                    "rating": self._rate_physical_attribute(intensity_score),
-                },
-            },
-            "physical_age_analysis": {
-                "current_age": physical_age,
-                "development_stage": development_stage,
-                "peak_years_remaining": peak_years_remaining,
-            },
-            "injury_risk_factors": self._assess_injury_risk(player_data),
-            # C16: this is the mean of three reference-normalised scores, not a
-            # percentile against other players, and used to be labelled as one.
-            "physical_comparison": (
-                f"Athletic score {int((speed_score + endurance_score + intensity_score) / 3)}/100 "
-                f"versus {self.PHYSICAL_GROUP.get(player_data.get('position'), 'midfield')} reference values"
-            ),
+            "current_age": physical_age,
+            "development_stage": development_stage,
+            "peak_years_remaining": peak_years_remaining,
+            "basis": "From the age declared in the source.",
         }
 
     def _rate_physical_attribute(self, score: float) -> str:
@@ -961,19 +1012,46 @@ class ScoutingReportGenerator:
             return "Below Average"
 
     def _assess_injury_risk(self, player_data: Dict) -> Dict:
-        """Assess injury risk factors"""
-        age = self._age(player_data)
-        injury_history = player_data.get("injury_history", [])
-        workload = player_data["metrics"]["movement"]["distance_covered_per_90"]
+        """Assess injury risk, or decline to when there is nothing to assess.
 
+        Three inputs feed this: age, injury history and workload. With none of
+        them the old version still returned a number — zero — and the report
+        printed "Injury: 0% · Low Risk", which reads as a medical clearance and
+        is really just an empty table. A risk of nought is not a finding about
+        a footballer; it is the absence of inputs wearing a finding's clothes.
+
+        The workload read was also unguarded: metrics["movement"][...] raised
+        a KeyError for every player whose feed has no tracking block, which is
+        all of them on the current source.
+        """
+        has_age = self._has_age(player_data)
+        injury_history = player_data.get("injury_history") or []
+        movement = self._movement(player_data)
+        workload = movement["distance_covered_per_90"] if movement else None
+
+        if not has_age and not injury_history and workload is None:
+            return {
+                "risk_level": None,
+                "level": None,
+                "risk_score": None,
+                "score": None,
+                "risk_factors": [],
+                "mitigation_suggestions": [],
+                "basis": (
+                    "Not assessed: this source carries no age, no injury history "
+                    "and no workload. Supply any of the three and a risk appears."
+                ),
+            }
+
+        age = self._age(player_data) if has_age else None
         risk_score = 0
         risk_factors = []
 
         # Age factor
-        if age > 30:
+        if age is not None and age > 30:
             risk_score += 20
             risk_factors.append("Age over 30")
-        elif age > 28:
+        elif age is not None and age > 28:
             risk_score += 10
 
         # Injury history
@@ -986,10 +1064,20 @@ class ScoutingReportGenerator:
             risk_factors.append("Some injury history")
 
         # Workload
-        if workload > 11.5:
+        if workload is not None and workload > 11.5:
             risk_score += 10
             risk_factors.append("Very high workload")
 
+        # What the figure actually rests on, named on the figure itself. A
+        # risk built from one input out of three is not the same claim as one
+        # built from all three, and the reader is entitled to know which.
+        considered = [
+            name for name, present in (
+                ("age", has_age),
+                ("injury history", bool(injury_history)),
+                ("workload", workload is not None),
+            ) if present
+        ]
         injury_level = "High" if risk_score > 40 else "Moderate" if risk_score > 20 else "Low"
         return {
             "risk_level": injury_level,
@@ -998,6 +1086,7 @@ class ScoutingReportGenerator:
             "score": risk_score,
             "risk_factors": risk_factors,
             "mitigation_suggestions": self._suggest_injury_mitigation(risk_factors),
+            "basis": "Assessed from " + ", ".join(considered) + ".",
         }
 
     def _suggest_injury_mitigation(self, risk_factors: List[str]) -> List[str]:
@@ -1614,15 +1703,41 @@ class ScoutingReportGenerator:
             if "level" not in rf:
                 rf["level"] = rf.get("risk_level", self._categorize_risk(rf["score"]))
 
-        # Calculate overall risk score (now includes all sub-risks)
-        total_risk_score = np.mean([rf["score"] for rf in risk_factors.values()])
+        # Average only the sub-risks that were actually assessed.
+        #
+        # A sub-risk with no inputs now reports None rather than zero, and
+        # np.mean over a list holding a None raises. Substituting zero would
+        # have been worse than the crash: it is the same error this whole pass
+        # is about, one level up — an absence counted as "no risk here", which
+        # drags the overall figure down and makes a player look safer the less
+        # Kumü knows about him.
+        scored = [
+            rf["score"] for rf in risk_factors.values()
+            if isinstance(rf.get("score"), (int, float)) and not isinstance(rf.get("score"), bool)
+        ]
+        total_risk_score = float(np.mean(scored)) if scored else None
+        assessed = [
+            name for name, rf in risk_factors.items()
+            if isinstance(rf.get("score"), (int, float)) and not isinstance(rf.get("score"), bool)
+        ]
 
         return {
-            "overall_risk_level": self._categorize_risk(total_risk_score),
+            "overall_risk_level": (
+                self._categorize_risk(total_risk_score) if total_risk_score is not None else None
+            ),
             "risk_score": total_risk_score,
             "risk_factors": risk_factors,
+            "risk_basis": (
+                f"Averaged over {len(assessed)} of {len(risk_factors)} risks: "
+                + ", ".join(n.replace("_", " ") for n in assessed)
+                if assessed else "No risk could be assessed from this source."
+            ),
             "mitigation_plan": self._create_risk_mitigation_plan(risk_factors),
-            "decision_impact": self._assess_decision_impact(total_risk_score),
+            "decision_impact": (
+                self._assess_decision_impact(total_risk_score)
+                if total_risk_score is not None
+                else "Not enough data to weigh risk against the decision."
+            ),
         }
 
     def _assess_performance_risk(self, player_data: Dict) -> Dict:
@@ -2005,8 +2120,17 @@ class ScoutingReportGenerator:
         ]
 
     # Neutral stand-ins for metric categories a data source may not provide.
-    # StatsBomb open data has no tracking, so "movement" is always absent and
-    # generate_physical_profile indexes it directly.
+    # NO "movement" ENTRY HERE, AND THAT IS THE POINT.
+    #
+    # There used to be one - distance 10.0, sprints 20, speed 7.0 - added so the
+    # maths downstream would not crash on an absent block. For a central
+    # midfielder those constants divide by the positional reference into
+    # 84 / 83 / 57, which is the athletic profile this report showed for every
+    # single midfielder in the database. It was not a measurement of anyone.
+    #
+    # The consumers now tolerate the absence and say so on the page, so the
+    # defaults are no longer load-bearing. The day a provider sends movement it
+    # passes straight through and the scores become real.
     NEUTRAL_METRICS = {
         "passing": {
             "completion_rate": 0.75, "progressive_passes_per_90": 3.0,
@@ -2015,9 +2139,6 @@ class ScoutingReportGenerator:
         "shooting": {
             "shots_per_90": 1.5, "xG_per_shot": 0.12, "conversion_rate": 0.12,
             "goals_per_90": 0.2, "assists_per_90": 0.2,
-        },
-        "movement": {
-            "distance_covered_per_90": 10.0, "high_intensity_runs": 20, "average_speed": 7.0,
         },
         "defensive": {
             "tackles_per_90": 1.5, "interceptions_per_90": 1.5, "aerial_duels_won": 0.5,

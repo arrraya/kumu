@@ -69,21 +69,24 @@ interface ScoutingReportData {
     };
   };
   physical_profile: {
-    athletic_scores: {
-      speed: { score: number; rating: string };
-      endurance: { score: number; rating: string };
-      intensity: { score: number; rating: string };
-    };
+    // Partial, and empty when the source carries no tracking data. The type
+    // says so, so a missing block is a case the compiler makes you handle
+    // rather than a zero that slips through looking like a measurement.
+    athletic_scores: Partial<Record<'speed' | 'endurance' | 'intensity',
+      { score: number; rating: string }>>;
+    athletic_scores_basis?: string | null;
     physical_age_analysis: {
       current_age: number | null;
-      development_stage: string;
-      peak_years_remaining: number;
+      development_stage: string | null;
+      peak_years_remaining: number | null;
+      basis?: string | null;
     };
     injury_risk_factors: {
-      risk_level: string;
-      risk_score: number;
+      risk_level: string | null;
+      risk_score: number | null;
       risk_factors: string[];
       mitigation_suggestions: string[];
+      basis?: string | null;
     };
   };
   market_analysis: {
@@ -117,8 +120,9 @@ interface ScoutingReportData {
     upgrade_assessment: string;
   };
   risk_assessment: {
-    overall_risk_level: string;
-    risk_score: number;
+    overall_risk_level: string | null;
+    risk_score: number | null;
+    risk_basis?: string | null;
     risk_factors: {
       [key: string]: { score: number; level: string };
     };
@@ -160,8 +164,8 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
       setReport(JSON.parse(savedReport));
       setLoading(false);
     } else if (player && match) {
-      // In production, this would fetch from API
-      generateMockReport();
+      setReport(null);
+      setLoading(false);
     } else {
       setLoading(false);
     }
@@ -214,160 +218,16 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
     }
   };
 
-  const generateMockReport = () => {
-    // This would be replaced with actual API call
-    const mockReport: ScoutingReportData = {
-      report_metadata: {
-        generated_date: new Date().toISOString(),
-        player_name: player?.name || '',
-        player_id: player?.id || '',
-        team_name: match?.team.name || '',
-        team_id: match?.team.id || ''
-      },
-      executive_summary: {
-        recommendation: "STRONGLY RECOMMENDED",
-        action: "Proceed immediately with negotiations",
-        match_score: match?.score.overall || 0,
-        overall_percentile: 82,
-        key_findings: [
-          `Player ranks in the 82nd percentile overall`,
-          `Match compatibility score: ${match?.score.overall || 0}%`,
-          `Age: not available in this data source`,
-          `Financial fit: ${match?.score.financial && match.score.financial > 80 ? 'Within budget' : 'Requires negotiation'}`
-        ],
-        executive_statement: `${player?.name} represents a strongly recommended acquisition for ${match?.team.name}. Statistical analysis places the player in the 82nd percentile for their position in ${match?.team.league}.`
-      },
-      statistical_overview: {
-        position_specific_analysis: {},
-        statistical_strengths: [
-          "Key Passes Per 90: Elite (85th percentile)",
-          "High Intensity Runs: Excellent (80th percentile)",
-          "Progressive Passes Per 90: Excellent (78th percentile)"
-        ],
-        statistical_weaknesses: ["Aerial Duels Won: Below Average (35th percentile)"],
-        consistency_rating: { rating: "Consistent", score: 75 },
-        form_trajectory: { trend: "Improving", direction: "positive", slope: 0.15 }
-      },
-      tactical_analysis: {
-        formation_compatibility: { 
-          fit: "Perfect", 
-          score: 100, 
-          note: "Natural position in 4-3-3" 
-        },
-        style_compatibility: {
-          compatibility_score: 85,
-          player_style: "Creative Playmaker",
-          notes: [
-            "Excellent fit for possession-based system",
-            "High work rate suits pressing system"
-          ]
-        },
-        role_suitability: {
-          best_role: "Playmaker",
-          recommendation: "Best suited as Playmaker with 85% compatibility"
-        },
-        tactical_flexibility: {
-          primary_position: player?.position || "CAM",
-          alternative_positions: ["CM", "RW", "LW"],
-          versatility_score: 80,
-          tactical_flexibility: "High"
-        }
-      },
-      physical_profile: {
-        athletic_scores: {
-          speed: { score: 78, rating: "Excellent" },
-          endurance: { score: 82, rating: "Excellent" },
-          intensity: { score: 85, rating: "Elite" }
-        },
-        physical_age_analysis: {
-          // Null rather than a made-up age: the report declares what it
-          // does not know instead of filling the gap with a plausible number.
-          current_age: player?.age ?? null,
-          development_stage: "Still developing physically",
-          peak_years_remaining: 5
-        },
-        injury_risk_factors: {
-          risk_level: "Low",
-          risk_score: 15,
-          risk_factors: ["Some injury history"],
-          mitigation_suggestions: ["Comprehensive medical assessment before signing"]
-        }
-      },
-      market_analysis: {
-        current_market_value: player?.marketValue ?? null,
-        value_assessment: {
-          assessment: "Fair value",
-          recommendation: "Market-appropriate pricing",
-          value_ratio: 1.05,
-          vs_comparables: "+5.0% vs similar transfers"
-        },
-        value_projections: {
-          year_1: { value: 28750000, age: 24, change_pct: 15.0 },
-          year_2: { value: 31625000, age: 25, change_pct: 26.5 },
-          year_3: { value: 33200000, age: 26, change_pct: 32.8 }
-        },
-        roi_analysis: {
-          roi_percentage: 42.5,
-          breakeven_period: "2-3 years",
-          risk_adjusted_roi: 38.2
-        }
-      },
-      comparison_analysis: {
-        squad_comparison: {
-          performance_improvement: "+18.5%",
-          immediate_impact: "Likely starter",
-          position_upgrade: true
-        },
-        league_comparison: {
-          league_percentile: 82,
-          vs_top_performers: "Top tier",
-          statistical_rank: "Ranks approximately 2nd in position"
-        },
-        upgrade_assessment: "Clear upgrade - would improve squad quality"
-      },
-      risk_assessment: {
-        overall_risk_level: "Moderate",
-        risk_score: 28.5,
-        risk_factors: {
-          performance_risk: { score: 15, level: "Low" },
-          injury_risk: { score: 25, level: "Moderate" },
-          adaptation_risk: { score: 35, level: "Moderate" },
-          financial_risk: { score: 20, level: "Low" },
-          age_related_risk: { score: 10, level: "Low" }
-        },
-        mitigation_plan: [
-          "Comprehensive medical examination",
-          "Assign integration mentor",
-          "Gradual tactical integration"
-        ]
-      },
-      negotiation_strategy: {
-        negotiation_position: {
-          strength: "Strong",
-          score: 75,
-          factors: ["Contract expiring soon", "Multiple alternative targets available"]
-        },
-        offer_strategy: {
-          opening_offer: (match?.offer.min || 20) * 1000000,
-          maximum_offer: (match?.offer.max || 28) * 1000000,
-          walk_away_price: (match?.offer.max || 28) * 1.1 * 1000000
-        },
-        timeline: {
-          initial_contact: "Immediately",
-          first_offer: "Within 48 hours",
-          negotiation_window: "1-2 weeks"
-        },
-        tactics: [
-          "Start with aggressive opening offer",
-          "Set firm deadlines",
-          "Emphasize alternative options"
-        ]
-      }
-    };
-    
-    setReport(mockReport);
-    setLoading(false);
-  };
+  /**
+   * There used to be a generateMockReport() here: ~150 lines that invented a
+   * complete scouting report — athletic scores, injury risk, negotiation
+   * figures — and rendered it exactly like a real one, with no label and no
+   * visual difference. It ran whenever no report was in localStorage.
+   *
+   * A product whose argument is that it marks every figure's provenance
+   * cannot have a path that fabricates the whole document. Absence is now
+   * shown as absence.
+   */
 
   // Tolerates absence: a client whose feed carries no valuations should see a
   // dash, not "€NaNM".
@@ -385,6 +245,18 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
     { id: 'risk', name: 'Risk Assessment', icon: Shield },
     { id: 'negotiation', name: 'Negotiation Strategy', icon: Briefcase }
   ];
+
+  /**
+   * 1st, 2nd, 3rd, 92nd. The report printed "92th" on a figure set at display
+   * size; English ordinals are irregular in the units digit except in the
+   * teens, which is the whole rule.
+   */
+  const ordinal = (n: number): string => {
+    const v = Math.abs(Math.round(n)) % 100
+    const suffix = v >= 11 && v <= 13 ? 'th'
+      : ['th', 'st', 'nd', 'rd'][Math.abs(Math.round(n)) % 10] ?? 'th'
+    return `${Math.round(n)}${suffix}`
+  }
 
   const RecommendationBadge = ({ recommendation }: { recommendation: string }) => {
     const getColor = () => {
@@ -405,7 +277,7 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
     <div className="mb-4">
       <div className="flex justify-between text-sm mb-1">
         <span className="text-ink-soft">{label}</span>
-        <span className="font-medium">{percentile}th percentile</span>
+        <span className="font-medium">{ordinal(percentile)} percentile</span>
       </div>
       <div className="w-full bg-paper-sunk h-2">
         <div
@@ -416,11 +288,25 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
     </div>
   );
 
-  const RiskMeter = ({ score, level }: { score: number; level: string }) => {
+  const RiskMeter = ({ score, level }: { score: number | null; level: string | null }) => {
+    // An unassessed overall risk has no needle to point and no percentage to
+    // print. It used to arrive as a number because every sub-risk reported one
+    // whether or not it had anything to measure.
+    if (score === null || level === null) {
+      return (
+        <div className="border border-dashed border-rule-strong p-6 max-w-read">
+          <h4 className="label mb-2">Overall risk — not assessed</h4>
+          <p className="text-sm text-ink-soft">
+            {report.risk_assessment.risk_basis ??
+              'No risk could be assessed from this source.'}
+          </p>
+        </div>
+      );
+    }
     const rotation = (score / 100) * 180 - 90;
     
     return (
-      <div className="relative w-32 h-16 mx-auto">
+      <div className="w-32 mx-auto">
         <svg viewBox="0 0 100 60" className="w-full h-full">
           <path
             d="M 10 50 A 40 40 0 0 1 90 50"
@@ -607,7 +493,14 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
           <ul className="space-y-2">
             {report.tactical_analysis.style_compatibility.notes.map((note, i) => (
               <li key={i} className="flex items-start gap-2 text-ink-soft">
-                <Check className="w-5 h-5 text-field mt-0.5 flex-shrink-0" />
+                {/* A tick asserts something was checked and holds. A note that
+                    says a thing could NOT be assessed gets a dash instead:
+                    the icon is a claim too. */}
+                {note.toLowerCase().includes('not assessed') ? (
+                  <span aria-hidden="true" className="w-5 mt-0.5 flex-shrink-0 text-ink-faint text-center">—</span>
+                ) : (
+                  <Check className="w-5 h-5 text-ink mt-0.5 flex-shrink-0" aria-hidden="true" />
+                )}
                 <span>{note}</span>
               </li>
             ))}
@@ -660,7 +553,22 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <h4 className="font-medium text-ink-soft mb-4">Athletic Attributes</h4>
+              <h4 className="label mb-4">Athletic Attributes</h4>
+              {/* A GAP, NOT A ZERO. This chart used to draw three bars from
+                  metrics the event feed does not carry, so a tracking-free
+                  source produced a full athletic profile out of nothing. The
+                  chart and its scoring are untouched underneath: the day a
+                  provider sends distance, sprints and speed, the bars appear
+                  with no change here. */}
+              {athleticData.length === 0 ? (
+                <div className="border border-dashed border-rule-strong p-6">
+                  <p className="text-sm text-ink-soft max-w-read">
+                    {report.physical_profile.athletic_scores_basis ??
+                      'No athletic profile: this source carries no tracking data.'}
+                  </p>
+                  <p className="label mt-3">Needs: distance · sprints · speed</p>
+                </div>
+              ) : (
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={athleticData}>
                   <CartesianGrid strokeDasharray="3 3" />
@@ -678,40 +586,74 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
+              )}
             </div>
-            
+
             <div>
-              <h4 className="font-medium text-ink-soft mb-4">Age & Development</h4>
-              <div className="bg-field-wash p-6 rounded-sm">
-                <div className="text-center">
-                  <div className="text-3xl font-bold text-field">{report.physical_profile.physical_age_analysis.current_age ?? "n/a"}</div>
-                  <div className="text-sm text-ink-soft mt-1">years old</div>
+              <h4 className="label mb-4">Age & Development</h4>
+              {/* The report states on its own masthead that age is not carried
+                  by this source. It then printed "26 · Physical prime · 2 peak
+                  years remaining" from the constant that stands in for a
+                  missing age — an age-dependent judgement on an age the same
+                  page had just declared unknown. */}
+              {report.physical_profile.physical_age_analysis.current_age === null ? (
+                <div className="border border-dashed border-rule-strong p-6">
+                  <p className="text-sm text-ink-soft max-w-read">
+                    {report.physical_profile.physical_age_analysis.basis ??
+                      'Age is not carried by this source, so no career-stage judgement is made.'}
+                  </p>
+                  <p className="label mt-3">Needs: date of birth</p>
                 </div>
-                <div className="mt-4 text-center">
-                  <p className="text-field-dark font-medium">{report.physical_profile.physical_age_analysis.development_stage}</p>
-                  <p className="text-sm text-field mt-2">
-                    {report.physical_profile.physical_age_analysis.peak_years_remaining} peak years remaining
+              ) : (
+                <div className="bg-paper-sunk p-6">
+                  <div className="text-center">
+                    <div className="figure">{report.physical_profile.physical_age_analysis.current_age}</div>
+                    <div className="label mt-2">years old</div>
+                  </div>
+                  <div className="mt-4 text-center">
+                    <p className="font-medium">{report.physical_profile.physical_age_analysis.development_stage}</p>
+                    {report.physical_profile.physical_age_analysis.peak_years_remaining !== null && (
+                      <p className="text-sm text-ink-soft mt-2">
+                        {report.physical_profile.physical_age_analysis.peak_years_remaining} peak years remaining
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* "Injury: 0% · Low Risk" reads as a medical clearance. It was
+                  an empty table: no age, no history, no workload, so nothing
+                  added to the score and nothing is what it reported. */}
+              {report.physical_profile.injury_risk_factors.risk_level === null ? (
+                <div className="mt-4 border border-dashed border-rule-strong p-4">
+                  <h5 className="label mb-2">Injury risk — not assessed</h5>
+                  <p className="text-sm text-ink-soft max-w-read">
+                    {report.physical_profile.injury_risk_factors.basis ??
+                      'This source carries no age, no injury history and no workload.'}
                   </p>
                 </div>
-              </div>
-              
-              <div className="mt-4 bg-flag-wash p-4 rounded-sm">
-                <h5 className="font-medium text-flag mb-2">Injury Risk Assessment</h5>
-                <div className="flex items-center justify-between">
-                  <span className="text-flag">Risk Level:</span>
-                  <span className="font-semibold text-flag">{report.physical_profile.injury_risk_factors.risk_level}</span>
-                </div>
-                {report.physical_profile.injury_risk_factors.mitigation_suggestions.length > 0 && (
-                  <div className="mt-3">
-                    <p className="text-xs text-flag mb-1">Mitigation:</p>
-                    <ul className="text-xs text-flag space-y-1">
-                      {report.physical_profile.injury_risk_factors.mitigation_suggestions.map((suggestion, i) => (
-                        <li key={i}>• {suggestion}</li>
-                      ))}
-                    </ul>
+              ) : (
+                <div className="mt-4 bg-flag-wash p-4">
+                  <h5 className="label text-flag mb-2">Injury Risk Assessment</h5>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-flag">Risk Level</span>
+                    <span className="font-semibold text-flag">{report.physical_profile.injury_risk_factors.risk_level}</span>
                   </div>
-                )}
-              </div>
+                  {report.physical_profile.injury_risk_factors.basis && (
+                    <p className="text-xs text-flag mt-2">{report.physical_profile.injury_risk_factors.basis}</p>
+                  )}
+                  {report.physical_profile.injury_risk_factors.mitigation_suggestions.length > 0 && (
+                    <div className="mt-3">
+                      <p className="text-xs text-flag mb-1">Mitigation:</p>
+                      <ul className="text-xs text-flag space-y-1">
+                        {report.physical_profile.injury_risk_factors.mitigation_suggestions.map((suggestion, i) => (
+                          <li key={i}>• {suggestion}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -837,7 +779,7 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
          <div className="bg-field-wash p-6 rounded-sm">
            <h4 className="font-medium text-ink mb-4">League Standing</h4>
            <div className="text-center mb-4">
-             <div className="text-3xl font-bold text-field">{report.comparison_analysis.league_comparison.league_percentile}th</div>
+             <div className="text-3xl font-bold text-field">{ordinal(report.comparison_analysis.league_comparison.league_percentile)}</div>
              <div className="text-sm text-ink-soft mt-1">League Percentile</div>
            </div>
            <div className="bg-paper-card p-3 rounded text-center">
@@ -886,14 +828,14 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
                  risk.level === 'Moderate' ? 'text-flag' :
                  'text-loss'
                }`}>
-                 {risk.score.toFixed(0)}%
+                 {typeof risk.score === 'number' ? `${risk.score.toFixed(0)}%` : '—'}
                </div>
                <div className={`text-xs mt-1 ${
                  risk.level === 'Low' ? 'text-field-dark' :
                  risk.level === 'Moderate' ? 'text-flag' :
                  'text-loss'
                }`}>
-                 {risk.level} Risk
+                 {risk.level ? `${risk.level} Risk` : 'Not assessed'}
                </div>
              </div>
            ))}
@@ -1098,7 +1040,7 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
         <span><span className="is-curated font-medium">Decided</span> in advance and replaced as data arrives</span>
       </div>
       <p className="mt-3 max-w-read text-sm text-ink-soft leading-relaxed">
-        Age is not in this data source and is held constant for everyone. Market
+        Age is not carried by this source, so no age-dependent judgement is made. Market
         values are estimated from performance. Club playing styles and expected
         levels are declared judgements, and roles that rely on aerial duels or
         blocks score low because the source does not record them.

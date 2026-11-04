@@ -731,7 +731,19 @@ class PDFReportGenerator:
         """
         elements = [Paragraph("Physical Profile", self.styles["SectionHeader"])]
 
-        athletic_scores = data.get("athletic_scores", {})
+        athletic_scores = data.get("athletic_scores") or {}
+        if not athletic_scores:
+            # The PDF is the artefact that leaves the building, so a gap here
+            # has to read as a gap and not as a section that quietly vanished.
+            elements.append(
+                Paragraph(
+                    data.get("athletic_scores_basis")
+                    or "No athletic profile: this source carries no tracking data "
+                       "(distance, sprints, speed).",
+                    self.styles["Caveat"],
+                )
+            )
+            elements.append(Spacer(1, 0.15 * inch))
         if athletic_scores:
             elements.append(Paragraph("<b>Athletic Attributes:</b>", self.styles["SubSection"]))
             for attr, value in athletic_scores.items():
@@ -747,23 +759,45 @@ class PDFReportGenerator:
                     )
             elements.append(Spacer(1, 0.15 * inch))
 
-        age_analysis = data.get("physical_age_analysis", {})
-        if age_analysis:
+        age_analysis = data.get("physical_age_analysis") or {}
+        stage = age_analysis.get("development_stage")
+        peak = age_analysis.get("peak_years_remaining")
+        if stage:
+            line = f"<b>Development stage:</b> {stage}"
+            # Printed ".get('peak_years_remaining', 0)", so a player with no
+            # age came out as "0 peak years remaining" — a verdict, not a gap.
+            if isinstance(peak, (int, float)):
+                line += f" — {peak} peak years remaining"
+            elements.append(Paragraph(line, self.styles["BodyText"]))
+        elif age_analysis:
             elements.append(
                 Paragraph(
-                    f"<b>Development stage:</b> {age_analysis.get('development_stage', 'Unknown')}"
-                    f" — {age_analysis.get('peak_years_remaining', 0)} peak years remaining",
-                    self.styles["BodyText"],
+                    age_analysis.get("basis")
+                    or "Age is not carried by this source, so no career-stage "
+                       "judgement is made.",
+                    self.styles["Caveat"],
                 )
             )
 
-        injury = data.get("injury_risk_factors", {})
-        if injury:
+        injury = data.get("injury_risk_factors") or {}
+        level = injury.get("risk_level")
+        if level:
+            line = f"<b>Injury risk:</b> {level}"
+            score = injury.get("risk_score")
+            if isinstance(score, (int, float)):
+                line += f" (score {score})"
+            if injury.get("basis"):
+                line += f". {injury['basis']}"
+            elements.append(Paragraph(line, self.styles["BodyText"]))
+            elements.append(Spacer(1, 0.2 * inch))
+        elif injury:
+            # "(score 0)" on an unassessed risk reads as a clean bill of health.
             elements.append(
                 Paragraph(
-                    f"<b>Injury risk:</b> {injury.get('risk_level', 'Unknown')}"
-                    f" (score {injury.get('risk_score', 0)})",
-                    self.styles["BodyText"],
+                    injury.get("basis")
+                    or "Injury risk not assessed: no age, no injury history and "
+                       "no workload in this source.",
+                    self.styles["Caveat"],
                 )
             )
             elements.append(Spacer(1, 0.2 * inch))
