@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 from typing import Dict, List
 
@@ -422,6 +424,22 @@ class PlayerTeamMatcher:
     # Age the pipeline assigns when no birth date is available in the source
     ASSUMED_AGE = 26
 
+    # DECIDED, not measured. Where development peaks, in index points of gap
+    # between the club's expected level and the player's own, and how quickly
+    # it falls away either side.
+    #
+    # PEAK = +6: the squad asks for about six points more than he delivers
+    # today - a clear step up he can still hold a place in.
+    # WIDTH = 12: at twenty points above him the development value is roughly
+    # halved, and at thirty it is marginal, which is the bench.
+    #
+    # Neither has been validated against completed transfers, because Kumu has
+    # no transfer outcomes to validate against. They are judgements declared in
+    # advance, in the same sense as league strength and club playing styles,
+    # and they get replaced by measurement when outcome data exists.
+    DEVELOPMENT_PEAK = 6.0
+    DEVELOPMENT_WIDTH = 12.0
+
     def calculate_growth_potential(self, player: Player, team: Team = None) -> float:
         """How much this player stands to develop AT THIS CLUB.
 
@@ -451,23 +469,36 @@ class PlayerTeamMatcher:
         if team is None:
             return age_score * 0.4 + trend_score * 0.6
 
-        # Headroom: how far the club's level sits above the player's.
+        # Headroom: how much this club would stretch this player.
+        #
+        # This was monotonic in the level gap, capped at 1.0 and floored at
+        # 0.45, and both ends were wrong about football. The cap said a club
+        # thirty index points above the player is the best development
+        # environment there is; in reality he does not get on the pitch, and
+        # minutes are how a footballer develops. The floor said every club
+        # below him is equally pointless, which flattened the component into a
+        # near-constant: across ten clubs from the Eredivisie to the Premier
+        # League, a top player's growth score spanned 1.2 points, and a 62-index
+        # teenager scored exactly 70.0 at all ten because they all hit the cap -
+        # the model could not tell Ajax from Manchester City for a player whose
+        # whole decision is which of the two to join.
+        #
+        # Development is not monotonic in the gap. It peaks where the squad
+        # demands somewhat more than the player currently delivers and falls
+        # away on both sides: nothing to learn below, no minutes above. A
+        # Gaussian in the gap says exactly that, with two parameters that each
+        # mean something a scout can argue with, and no cliffs or clamping.
         expected = getattr(team, "expected_index", None)
         if not expected:
-            headroom_score = 0.5
-        else:
-            gap = (float(expected) - float(index)) / 20.0
-            if gap >= 0:
-                # Room to grow, best when the club is a clear step up
-                headroom_score = min(1.0, 0.55 + gap * 0.9)
-            else:
-                # Already at or above the club's level: there is no upside left
-                # to measure, so this reads NEUTRAL rather than poor. Being
-                # overqualified is already penalised inside performance fit via
-                # level fit; scoring it low here too punished the same fact
-                # twice and cost the strongest players several points for
-                # having nothing left to learn.
-                headroom_score = max(0.45, 0.55 + gap * 0.15)
+            # No declared level for this club, so there is no gap to measure.
+            # Fall back to what the player alone supports rather than inventing
+            # a neutral 0.5 that looks like a reading of the club.
+            return age_score * 0.4 + trend_score * 0.6
+
+        gap = float(expected) - float(index)
+        headroom_score = math.exp(
+            -((gap - self.DEVELOPMENT_PEAK) ** 2) / (2 * self.DEVELOPMENT_WIDTH ** 2)
+        )
 
         return age_score * 0.25 + trend_score * 0.35 + headroom_score * 0.40
 

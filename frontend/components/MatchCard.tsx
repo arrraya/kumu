@@ -67,8 +67,14 @@ const MatchCard: React.FC<{
                   style={{ width: `${Math.max(0, Math.min(100, v))}%` }}
                 />
               </span>
-              <span className="w-8 text-right text-ink-soft tabular">
-                {v.toFixed(0)}
+              {/* One decimal, because that is the resolution these components
+                  actually have. Rounded to whole numbers, Manchester City's
+                  growth of 49.2 and Barcelona's 48.9 both printed "49" and the
+                  card erased the only difference the component produces: the
+                  two clubs' expected levels differ by one point and that is
+                  precisely what this is meant to show. */}
+              <span className="w-10 text-right text-ink-soft tabular">
+                {v.toFixed(1)}
               </span>
             </div>
           );
