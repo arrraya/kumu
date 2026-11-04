@@ -1,4 +1,5 @@
 """PDF generation service for scouting reports."""
+from app.services.scouting_report_generator import ordinal
 from io import BytesIO
 from typing import Dict, Any
 from reportlab.graphics.shapes import Drawing, Line, Rect, String
@@ -318,12 +319,12 @@ class PDFReportGenerator:
         if base.get("cross_market"):
             caveat = (
                 f"This is a move between markets, so the return is large by "
-                f"construction: the fee is priced in {vende} and the value he "
-                f"produces in {compra}. "
+                f"construction: the fee is priced in {vende} and the value they "
+                f"produce in {compra}. "
             )
             if proy.get("adjusted") and proy.get("value") is not None:
                 caveat += (
-                    f"His index is projected from {proy.get('factor')}× the "
+                    f"The index is projected from {proy.get('factor')}× the "
                     f"league-strength ratio to {proy['value']} at the buyer, "
                     f"because a rating earned against weaker opposition is worth "
                     f"less against stronger."
@@ -337,11 +338,11 @@ class PDFReportGenerator:
             )
 
         return self._explain(
-            "What the player costs, what he is worth to this club, and the "
+            "What the player costs, what they are worth to this club, and the "
             "return over the contract.",
-            f"The fee is priced on the scale of the market he leaves ({vende}); "
-            f"the value he generates on the scale of the market he joins "
-            f"({compra}), counting only what he adds above a replacement-level "
+            f"The fee is priced on the scale of the market they leave ({vende}); "
+            f"the value they generate on the scale of the market they join "
+            f"({compra}), counting only what they add above a replacement-level "
             f"player a club could sign cheaply.",
             caveat,
         )
@@ -369,8 +370,8 @@ class PDFReportGenerator:
              Paragraph(
                  "Derived by Kumü where the source carries nothing: market value "
                  "when the club supplies none, and any figure built on it, "
-                 "including the return. Age is not in this data source and is "
-                 "held constant; any age-dependent figure is an assumption.",
+                 "including the return. Age is absent from this source, so no "
+                 "age-dependent judgement is made at all.",
                  self.styles["Explain"])],
             [Paragraph("<b>Decided</b>", self.styles["Explain"]),
              Paragraph(
@@ -444,10 +445,10 @@ class PDFReportGenerator:
             elements.extend(self._generate_executive_summary(report_data["executive_summary"]))
             elements.extend(self._explain(
                 "A single compatibility figure and where the player ranks against "
-                "others in his position.",
-                "Four components, weighted: how he performs in the role, whether "
-                "the club needs that position and suits his style, how far the fee "
-                "stretches the budget, and how much room he has to develop there.",
+                "others in the same position.",
+                "Four components, weighted: how they perform in the role, whether "
+                "the club needs that position and suits their style, how far the fee "
+                "stretches the budget, and how much room they have to develop there.",
                 "Compatibility is a judgement about fit, not a prediction of "
                 "success. Kumü has not yet been validated against completed "
                 "transfers.",
@@ -476,10 +477,10 @@ class PDFReportGenerator:
             base = (report_data["tactical_analysis"] or {}).get("style_basis") or {}
             medido = base.get("measured_territory")
             elements.extend(self._explain(
-                "Whether the club needs this position, and whether his game suits "
+                "Whether the club needs this position, and whether their game suits "
                 "how they play.",
                 "Need is read from the club's actual squad — how many players it "
-                "has in the position and how good they are. Style compares his "
+                "has in the position and how good they are. Style compares their "
                 "output to the club's declared possession and pressing profile.",
                 (f"The club's style used in the score is declared curation. Measured "
                  f"from its squad's passing, territory reads {medido}; it is shown "
@@ -492,12 +493,12 @@ class PDFReportGenerator:
             elements.extend(self._generate_physical_profile(report_data["physical_profile"]))
             cancha = self._pitch(report_data.get("spatial_profile"))
             if cancha:
-                elements.append(Paragraph("Where he plays", self.styles["SubSection"]))
+                elements.append(Paragraph("Where they play", self.styles["SubSection"]))
                 elements.append(cancha)
                 elements.extend(self._explain(
-                    "The zones he is involved in, and the passing links he repeats.",
-                    "Shading is how often he touched the ball in each zone; lines "
-                    "are his most frequent completed passes between zones. Failed "
+                    "The zones they are involved in, and the passing links they repeat.",
+                    "Shading is how often they touched the ball in each zone; lines "
+                    "are their most frequent completed passes between zones. Failed "
                     "passes are excluded, because their destination is where the "
                     "ball was cut off rather than where it was aimed.",
                 ))
@@ -512,8 +513,8 @@ class PDFReportGenerator:
             elements.extend(self._generate_comparison_analysis(
                 report_data["comparison_analysis"]))
             elements.extend(self._explain(
-                "How he measures against the players the club already has, and "
-                "against his positional peers.",
+                "How they measure against the players the club already has, and "
+                "against their positional peers.",
                 "Squad comparison uses the destination club's real squad where one "
                 "is on file. Where it is not, the comparison falls back to players "
                 "around the positional median and says so.",
@@ -589,7 +590,7 @@ class PDFReportGenerator:
             ["Recommendation:", recommendation],
             ["Action:", action],
             ["Match Score:", f"{match_score:.1f}%"],
-            ["Overall Percentile:", f"{percentile}th"],
+            ["Overall Percentile:", ordinal(percentile)],
         ]
 
         summary_table = Table(summary_data, colWidths=[2 * inch, 4 * inch])
@@ -865,7 +866,7 @@ class PDFReportGenerator:
         league = data.get("league_comparison", {})
         if league:
             percentile = league.get("league_percentile")
-            percentile_text = f"{percentile}th percentile" if percentile is not None else "n/a"
+            percentile_text = f"{ordinal(percentile)} percentile" if percentile is not None else "n/a"
             elements.append(
                 Paragraph(
                     f"<b>League standing:</b> {percentile_text} — "
@@ -889,15 +890,21 @@ class PDFReportGenerator:
         elements.append(Paragraph("Risk Assessment", self.styles["SectionHeader"]))
 
         # Overall risk
-        risk_level = data.get("overall_risk_level", "N/A")
-        risk_score = data.get("risk_score", 0)
+        # Both can be absent now: a risk averaged over no assessable sub-risk
+        # has no level and no score, and formatting None with :.1f raises.
+        risk_level = data.get("overall_risk_level") or "Not assessed"
+        risk_score = data.get("risk_score")
+        score_text = f"{risk_score:.1f}" if isinstance(risk_score, (int, float)) else "—"
 
         risk_data = [
             ["Risk Level:", risk_level],
-            ["Risk Score:", f"{risk_score:.1f}"],
+            ["Risk Score:", score_text],
         ]
 
         risk_table = Table(risk_data, colWidths=[2 * inch, 4 * inch])
+        # A risk averaged over four of five sub-risks is not the same claim as
+        # one averaged over five, and the reader is entitled to know which.
+        _basis = data.get("risk_basis")
         risk_table.setStyle(
             TableStyle(
                 [
@@ -912,6 +919,8 @@ class PDFReportGenerator:
             )
         )
         elements.append(risk_table)
+        if _basis:
+            elements.append(Paragraph(_basis, self.styles["Caveat"]))
         elements.append(Spacer(1, 0.2 * inch))
 
         # Mitigation plan

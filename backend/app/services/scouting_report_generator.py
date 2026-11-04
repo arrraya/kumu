@@ -22,6 +22,19 @@ class StatisticalBenchmark:
     percentiles: Dict[str, Dict[int, float]]  # metric -> percentile -> value
 
 
+def ordinal(n) -> str:
+    """1st, 2nd, 3rd, 92nd. The report printed "92th" four times in the PDF,
+    twice at display size. English ordinals are irregular in the units digit
+    except in the teens, which is the whole rule."""
+    try:
+        n = int(round(float(n)))
+    except (TypeError, ValueError):
+        return str(n)
+    v = abs(n) % 100
+    suffix = "th" if 11 <= v <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(abs(n) % 10, "th")
+    return f"{n}{suffix}"
+
+
 class ScoutingReportGenerator:
     """Generates comprehensive scouting reports with statistical analysis"""
 
@@ -300,7 +313,7 @@ class ScoutingReportGenerator:
             "key_findings": self._key_findings(
                 player_data, team_data, metric_percentile_average, performance_percentile
             ),
-            "executive_statement": f"{player_data['name']} represents a {recommendation.lower()} acquisition for {team_data['name']}. Statistical analysis places the player in the {int(performance_percentile)}th percentile for their position in {team_data.get('league') or 'their league'}.",
+            "executive_statement": f"{player_data['name']} represents a {recommendation.lower()} acquisition for {team_data['name']}. Statistical analysis places the player in the {ordinal(performance_percentile)} percentile for their position in {team_data.get('league') or 'their league'}.",
         }
 
     def _key_findings(self, player_data: Dict, team_data: Dict,
@@ -318,15 +331,15 @@ class ScoutingReportGenerator:
         if metric_avg and abs(metric_avg - overall) >= 8:
             if metric_avg > overall:
                 out.append({
-                    "text": (f"Individual metrics ({int(metric_avg)}th) rate higher than "
-                             f"his overall rank ({int(overall)}th): strong in parts, "
+                    "text": (f"Individual metrics ({ordinal(metric_avg)}) rate higher than "
+                             f"the overall rank ({ordinal(overall)}): strong in parts, "
                              f"less so as a whole"),
                     "origin": "measured",
                 })
             else:
                 out.append({
-                    "text": (f"Rates higher overall ({int(overall)}th) than his "
-                             f"individual metrics ({int(metric_avg)}th) suggest"),
+                    "text": (f"Rates higher overall ({ordinal(overall)}) than the "
+                             f"individual metrics ({ordinal(metric_avg)}) suggest"),
                     "origin": "measured",
                 })
 
