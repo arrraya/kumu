@@ -109,6 +109,10 @@ async def generate_report(
         "budget": getattr(team, "budget", 0) or 0,
         "formation": getattr(team, "formation", None),
         "playing_style": getattr(team, "playing_style", None) or {},
+        # Declared positional needs. The tactical section can now say whether
+        # the club actually wants a player in this role, instead of only
+        # whether the formation happens to contain the label.
+        "requirements": getattr(team, "requirements", None) or {},
         # Measured style travels alongside the curated one so the report can
         # declare both; the fit still uses the curated profile.
         "spatial_profile": getattr(team, "spatial_profile", None) or {},

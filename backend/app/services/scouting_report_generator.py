@@ -1,3 +1,5 @@
+import json
+
 import numpy as np
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -234,6 +236,58 @@ class ScoutingReportGenerator:
             return PerformanceCategory.AVERAGE
         else:
             return PerformanceCategory.BELOW_AVERAGE
+
+    MIN_PEERS_FOR_PERCENTILE = 5
+
+    def _position_peer_metrics(self, position: str, org_ids=None) -> List[Dict]:
+        """Every same-position peer's metric block, fetched once per report.
+
+        Percentiles need a population. Absolute thresholds - "completion
+        rate above 0.82 is good" - do not have one, and that is how the
+        tactical section came to hand out the same verdict to everybody.
+        """
+        if not position:
+            return []
+        rows = self._query_db(
+            """
+            SELECT metrics FROM players
+            WHERE position = :position AND metrics IS NOT NULL
+              AND organization_id IN :org_ids
+            """,
+            {"position": position},
+            org_ids,
+        )
+        peers = []
+        for row in rows:
+            block = row[0]
+            if isinstance(block, str):
+                try:
+                    block = json.loads(block)
+                except ValueError:
+                    continue
+            if isinstance(block, dict):
+                peers.append(block)
+        return peers
+
+    def _metric_percentile(self, value, path, peers: List[Dict]) -> Optional[float]:
+        """Where `value` sits among same-position peers on one metric.
+
+        Returns None rather than a number when the peer group is too small
+        to rank against: a percentile computed from three players is not a
+        percentile, it is a rumour.
+        """
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            return None
+        category, metric = path
+        values = []
+        for block in peers:
+            v = (block.get(category) or {}).get(metric)
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                values.append(float(v))
+        if len(values) < self.MIN_PEERS_FOR_PERCENTILE:
+            return None
+        below = sum(1 for v in values if v < float(value))
+        return round(below / len(values) * 100, 1)
 
     def _positional_percentile(self, player_data: Dict, org_ids=None) -> Optional[float]:
         """True percentile of the player's index among same-position peers."""
@@ -522,44 +576,105 @@ class ScoutingReportGenerator:
         else:
             return {"trend": "Stable", "direction": "neutral", "slope": slope}
 
-    def generate_tactical_analysis(self, player_data: Dict, team_data: Dict) -> Dict:
-        """Generate tactical fit analysis"""
-        position = player_data["position"]
+    def generate_tactical_analysis(
+        self, player_data: Dict, team_data: Dict, org_ids=None
+    ) -> Dict:
+        """How this player fits this club's shape and its declared style."""
+        position = player_data.get("position") or ""
+        peers = self._position_peer_metrics(position, org_ids)
 
-        # Position-specific tactical analysis
-        tactical_fit = {
+        return {
             "formation_compatibility": self._assess_formation_fit(
-                position, team_data.get("formation", "4-3-3")
+                position,
+                team_data.get("formation"),
+                team_data.get("requirements"),
             ),
-            "style_compatibility": self._assess_style_fit(player_data, team_data),
+            "style_compatibility": self._assess_style_fit(player_data, team_data, peers),
             "style_basis": self._style_basis(team_data),
             "role_suitability": self._assess_role_suitability(player_data, team_data),
             "tactical_flexibility": self._assess_flexibility(player_data),
+            "peer_group": {
+                "position": position,
+                "size": len(peers),
+                "sufficient": len(peers) >= self.MIN_PEERS_FOR_PERCENTILE,
+            },
         }
 
-        return tactical_fit
+    FORMATION_POSITIONS = {
+        "4-3-3": ["GK", "RB", "CB", "CB", "LB", "CDM", "CM", "CM", "RW", "ST", "LW"],
+        "4-2-3-1": ["GK", "RB", "CB", "CB", "LB", "CDM", "CDM", "RM", "CAM", "LM", "ST"],
+        "3-5-2": ["GK", "CB", "CB", "CB", "RM", "CM", "CDM", "CM", "LM", "ST", "ST"],
+    }
 
-    def _assess_formation_fit(self, position: str, formation: str) -> Dict:
-        """Assess how well player fits team formation"""
-        formation_positions = {
-            "4-3-3": ["GK", "RB", "CB", "CB", "LB", "CDM", "CM", "CM", "RW", "ST", "LW"],
-            "4-2-3-1": ["GK", "RB", "CB", "CB", "LB", "CDM", "CDM", "RM", "CAM", "LM", "ST"],
-            "3-5-2": ["GK", "CB", "CB", "CB", "RM", "CM", "CDM", "CM", "LM", "ST", "ST"],
-        }
+    # Roles that cover the same ground under a different name. Without this,
+    # the verdict measured the vocabulary the formation happened to be
+    # written in: a centre midfielder was "Perfect" in a 4-3-3 and needed
+    # "positional adjustment" in a 4-2-3-1, whose midfield this table spells
+    # CDM/CDM/CAM. A 4-2-3-1 plays centre midfielders. The notation does not.
+    ROLE_EQUIVALENTS = {
+        "CM": ("CDM", "CAM"), "CDM": ("CM",), "CAM": ("CM",),
+        "RW": ("RM",), "RM": ("RW",),
+        "LW": ("LM",), "LM": ("LW",),
+        "ST": ("CF",), "CF": ("ST",),
+        "RB": ("RWB",), "RWB": ("RB",),
+        "LB": ("LWB",), "LWB": ("LB",),
+    }
 
-        if formation in formation_positions:
-            if position in formation_positions[formation]:
-                return {"fit": "Perfect", "score": 100, "note": f"Natural position in {formation}"}
-            elif position == "CAM" and "CM" in formation_positions[formation]:
-                return {"fit": "Good", "score": 80, "note": "Can adapt to central midfield role"}
+    def _assess_formation_fit(
+        self, position: str, formation: Optional[str], requirements: Optional[Dict] = None
+    ) -> Dict:
+        """Whether the club's shape has a place for this position.
+
+        This returns no score, and that is the fix. It used to return 100,
+        80, 60 or 50 and the screen printed the number with a percent sign.
+        Nothing was divided by anything: 100 meant "the string 'CB' appears
+        in a list of eleven strings". Since a 4-3-3 contains centre-backs,
+        every centre-back was "100% compatible" with every 4-3-3 club - the
+        figure described the formation, not the player, and was identical
+        for a world-class defender and a poor one. Across the twenty clubs
+        and thirteen positions, 68% of all pairs returned exactly 100.
+
+        A set-membership test should look like one. So: a verdict, the
+        equivalence that earned it, and separately whether the club has
+        actually declared a need at this position.
+        """
+        declared = ((requirements or {}).get("positions") or [])
+        club_needs = (position in declared) if declared else None
+
+        if formation not in self.FORMATION_POSITIONS:
+            return {
+                "fit": None,
+                "formation": formation,
+                "note": "This club's formation is not recorded, so no positional verdict is made.",
+                "club_needs_position": club_needs,
+                "basis": "Needs: the club's formation.",
+            }
+
+        slots = self.FORMATION_POSITIONS[formation]
+        if position in slots:
+            fit = "Natural"
+            note = "%s is a starting role in the club's %s." % (position, formation)
+        else:
+            covering = [r for r in self.ROLE_EQUIVALENTS.get(position, ()) if r in slots]
+            if covering:
+                fit = "Covered"
+                note = "The %s has no %s slot, but %s covers the same ground." % (
+                    formation, position, "/".join(covering)
+                )
             else:
-                return {
-                    "fit": "Requires adaptation",
-                    "score": 60,
-                    "note": "May need positional adjustment",
-                }
+                fit = "Out of formation"
+                note = "The %s fields no %s or equivalent role." % (formation, position)
 
-        return {"fit": "Unknown", "score": 50, "note": "Formation compatibility unclear"}
+        return {
+            "fit": fit,
+            "formation": formation,
+            "note": note,
+            "club_needs_position": club_needs,
+            "basis": (
+                "Formation is a declared club profile, not a measurement. "
+                "Positional need is declared by the club."
+            ),
+        }
 
     def _style_basis(self, team_data: Dict) -> Dict:
         """What the style judgement rests on, curated and measured side by side.
@@ -586,70 +701,192 @@ class ScoutingReportGenerator:
             ) if derived else "No measured style available for this club.",
         }
 
-    def _assess_style_fit(self, player_data: Dict, team_data: Dict) -> Dict:
-        """Assess playing style compatibility"""
-        player_style = self._determine_player_style(player_data)
-        team_style = team_data.get("playing_style", {})
+    # What each declared club trait asks of a player, and the measured metric
+    # that answers it. Pressing has no answer on this source: there is no
+    # tracking block, so work rate cannot be ranked. It stays in the table so
+    # the report can name the demand it could not score, rather than quietly
+    # scoring the player on half the question.
+    STYLE_DEMANDS = (
+        ("possession", ("passing", "completion_rate"), "keeping the ball"),
+        ("pressing_intensity", ("movement", "distance_covered_per_90"),
+         "covering ground off the ball"),
+    )
 
-        compatibility_score = 0
-        notes = []
+    def _assess_style_fit(
+        self, player_data: Dict, team_data: Dict, peers: Optional[List[Dict]] = None
+    ) -> Dict:
+        """Fit as a demand-weighted mean, on a scale every club shares.
 
-        metrics = player_data.get("metrics", {})
+        The old version started at zero and added 25 for each of two
+        thresholds the club had to clear: possession above 0.60, pressing
+        above 0.70. A player at a club that cleared neither could not score
+        above zero however good they were, and twelve of the twenty seeded
+        clubs clear neither. The number was not measuring the player; it was
+        measuring how extreme the club's declared style is, and a zero at
+        Monterrey meant something entirely different from a zero at City.
+        A score whose ceiling moves with the subject cannot be compared
+        across subjects, which is the one thing a score is for.
 
-        # Check passing style fit
-        if team_style.get("possession", 0.5) > 0.6:
-            completion_rate = metrics.get("passing", {}).get("completion_rate", 0)
-            if completion_rate > 0.82:
-                compatibility_score += 25
-                notes.append("Excellent fit for possession-based system")
-            else:
-                compatibility_score += 10
-                notes.append("May need to improve passing accuracy for possession style")
+        The demand is now continuous - how far the club sits above neutral,
+        max(v - 0.5, 0) x 2 - and the player's answer is a percentile among
+        same-position peers, not a pass/fail against an absolute line. The
+        fit is the weighted mean of those answers over the demands that
+        could be scored, so it runs 0 to 100 for every club alike, and the
+        report states what share of the club's declared demand that mean
+        actually covers.
+        """
+        peers = peers if peers is not None else []
+        style = team_data.get("playing_style") or {}
+        metrics = player_data.get("metrics") or {}
 
-        # Check pressing fit
-        if team_style.get("pressing_intensity", 0.5) > 0.7:
-            # Without tracking there is no work rate to judge, and the old
-            # `.get(..., 0)` quietly answered "low" for everyone, awarding the
-            # smaller score and printing "may need to increase work rate" as
-            # if that were a reading of the player.
-            distance = (metrics.get("movement") or {}).get("distance_covered_per_90")
-            if distance is None:
-                compatibility_score += 17
-                notes.append("Work rate not assessed: this source carries no tracking data")
-            elif distance > 10:
-                compatibility_score += 25
-                notes.append("High work rate suits pressing system")
-            else:
-                compatibility_score += 10
-                notes.append("May need to increase work rate for pressing system")
+        demands = []
+        for field, path, asks in self.STYLE_DEMANDS:
+            declared = style.get(field)
+            if not isinstance(declared, (int, float)) or isinstance(declared, bool):
+                continue
+            weight = max(float(declared) - 0.5, 0.0) * 2
+            if weight <= 0:
+                continue
+            value = (metrics.get(path[0]) or {}).get(path[1])
+            demands.append({
+                "trait": field,
+                "asks": asks,
+                "weight": round(weight, 3),
+                "standing": self._metric_percentile(value, path, peers),
+            })
 
-        return {
-            "compatibility_score": min(compatibility_score * 2, 100),
-            "player_style": player_style,
-            "team_style": team_style,
-            "notes": notes,
+        player_style = self._determine_player_style(player_data, peers)
+        total_weight = sum(d["weight"] for d in demands)
+        scored = [d for d in demands if d["standing"] is not None]
+        scored_weight = sum(d["weight"] for d in scored)
+
+        base = {
+            "player_style": player_style["label"],
+            "player_style_basis": player_style["basis"],
+            "team_style": style,
+            "demands": demands,
         }
 
-    def _determine_player_style(self, player_data: Dict) -> str:
-        """Determine player's playing style from stats"""
-        metrics = player_data["metrics"]
+        if total_weight <= 0:
+            base.update({
+                "compatibility_score": None,
+                "demand_share": None,
+                "notes": [],
+                "basis": (
+                    "Not assessed: this club's declared profile sits at or below "
+                    "neutral on both possession and pressing, so it makes no "
+                    "stylistic demand to score against."
+                ),
+            })
+            return base
 
-        if metrics["passing"]["key_passes_per_90"] > 2.5:
-            return "Creative Playmaker"
-        elif metrics["shooting"]["shots_per_90"] > 3.0:
-            return "Goal Threat"
-        elif metrics["defensive"]["tackles_per_90"] > 3.0:
-            return "Defensive Anchor"
-        elif (metrics.get("movement") or {}).get("distance_covered_per_90", 0) > 11:
-            # KeyError for every player with no tracking block, which on this
-            # source is all of them.
-            return "Box-to-Box"
-        else:
-            return "Balanced"
+        if not scored:
+            unscored = ", ".join(d["asks"] for d in demands)
+            base.update({
+                "compatibility_score": None,
+                "demand_share": 0.0,
+                "notes": [],
+                "basis": (
+                    "Not assessed: this club asks for %s, and this source carries "
+                    "nothing to rank the player on it." % unscored
+                ),
+            })
+            return base
 
-    # Role definitions for the positions that had no scorers at all: every
-    # player outside CAM and CB used to come back as "Unknown".
-    # Each entry: (category, metric), threshold, points, factor description.
+        fit = sum(d["weight"] * d["standing"] for d in scored) / scored_weight
+        share = scored_weight / total_weight
+
+        notes = [
+            "%s: %.0fth percentile among same-position peers"
+            % (d["asks"].capitalize(), d["standing"])
+            for d in scored
+        ]
+        missing = [d for d in demands if d["standing"] is None]
+        for d in missing:
+            notes.append(
+                "%s: not assessed, this source carries no measure of it"
+                % d["asks"].capitalize()
+            )
+
+        base.update({
+            "compatibility_score": round(fit, 1),
+            "demand_share": round(share, 3),
+            "notes": notes,
+            "basis": (
+                "Weighted mean over %d of this club's %d declared demands, "
+                "covering %.0f%% of the demand it states. Percentiles are "
+                "against %d same-position peers."
+                % (len(scored), len(demands), share * 100, len(peers))
+            ),
+        })
+        return base
+
+    # Traits a player can stand out on, each answered by one measured metric.
+    STYLE_TRAITS = (
+        ("Creator", ("passing", "key_passes_per_90")),
+        ("Goal threat", ("shooting", "goals_per_90")),
+        ("Ball winner", ("defensive", "tackles_per_90")),
+        ("Progressor", ("passing", "progressive_passes_per_90")),
+    )
+    DISTINCTIVE_PERCENTILE = 70.0
+
+    def _determine_player_style(
+        self, player_data: Dict, peers: Optional[List[Dict]] = None
+    ) -> Dict:
+        """The trait this player stands out on, relative to their position.
+
+        The old cascade tested absolute rates - more than 2.5 key passes,
+        more than 3.0 shots, more than 3.0 tackles - and fell through to
+        "Balanced". Those lines are high enough that almost nobody clears
+        them, so almost every player in the product was labelled Balanced,
+        which reads as a measured equilibrium and was in fact the absence of
+        any measurement at all. Its fourth branch read a tracking field this
+        source does not carry, so it could never fire.
+
+        A trait is now distinctive if the player ranks in the top 30% of
+        their own position on it. With no peer group to rank against, there
+        is no label.
+        """
+        peers = peers if peers is not None else []
+        metrics = player_data.get("metrics") or {}
+
+        standings = []
+        for label, path in self.STYLE_TRAITS:
+            value = (metrics.get(path[0]) or {}).get(path[1])
+            pct = self._metric_percentile(value, path, peers)
+            if pct is not None:
+                standings.append((pct, label))
+
+        if not standings:
+            return {
+                "label": None,
+                "basis": (
+                    "Not assessed: fewer than %d same-position peers to rank against."
+                    % self.MIN_PEERS_FOR_PERCENTILE
+                ),
+            }
+
+        standings.sort(reverse=True)
+        top_pct, top_label = standings[0]
+
+        if top_pct < self.DISTINCTIVE_PERCENTILE:
+            return {
+                "label": "No standout trait",
+                "basis": (
+                    "Below the %dth percentile of same-position peers on every "
+                    "trait measured; highest is %s at the %.0fth."
+                    % (int(self.DISTINCTIVE_PERCENTILE), top_label.lower(), top_pct)
+                ),
+            }
+
+        return {
+            "label": top_label,
+            "basis": (
+                "%.0fth percentile among same-position peers on %s."
+                % (top_pct, top_label.lower())
+            ),
+        }
+
     ROLE_DEFINITIONS = {
         "ST": {
             "Poacher": [
@@ -2449,7 +2686,7 @@ class ScoutingReportGenerator:
             },
             "executive_summary": self.generate_executive_summary(player_data, team_data, org_ids),
             "statistical_overview": self.generate_statistical_overview(player_data, team_data),
-            "tactical_analysis": self.generate_tactical_analysis(player_data, team_data),
+            "tactical_analysis": self.generate_tactical_analysis(player_data, team_data, org_ids),
             "physical_profile": self.generate_physical_profile(player_data),
             "market_analysis": market_analysis,
             "comparison_analysis": self.generate_comparison_analysis(player_data, team_data, org_ids),

@@ -51,11 +51,21 @@ interface ScoutingReportData {
     form_trajectory: { trend: string; direction: string; slope: number };
   };
   tactical_analysis: {
-    formation_compatibility: { fit: string; score: number; note: string };
+    formation_compatibility: {
+      // No score. It was never one: see _assess_formation_fit.
+      fit: string | null;
+      formation: string | null;
+      note: string;
+      club_needs_position: boolean | null;
+      basis?: string | null;
+    };
     style_compatibility: {
-      compatibility_score: number;
-      player_style: string;
+      compatibility_score: number | null;
+      demand_share: number | null;
+      player_style: string | null;
+      player_style_basis?: string | null;
       notes: string[];
+      basis?: string | null;
     };
     role_suitability: {
       best_role: string;
@@ -488,22 +498,82 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
         <h3 className="text-xl font-semibold mb-6">Tactical Fit Analysis</h3>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-field-wash p-6 rounded-sm">
-            <h4 className="font-medium text-ink mb-4">Formation Compatibility</h4>
-            <div className="text-center">
-              <div className="text-4xl font-bold text-field">{report.tactical_analysis.formation_compatibility.score}%</div>
-              <div className="text-lg text-field-dark mt-2">{report.tactical_analysis.formation_compatibility.fit}</div>
-              <p className="text-sm text-field mt-2">{report.tactical_analysis.formation_compatibility.note}</p>
-            </div>
+          {/* Formation carries no figure. A set-membership test printed with
+              a percent sign was the whole defect: 68% of club-position pairs
+              came back "100%", because a 4-3-3 contains centre-backs. */}
+          {(() => {
+            const f = report.tactical_analysis.formation_compatibility;
+            if (!f.fit) {
+              return (
+                <div className="border border-dashed border-rule-strong p-6">
+                  <h4 className="label mb-2">Formation — not recorded</h4>
+                  <p className="text-sm text-ink-soft">{f.note}</p>
+                </div>
+              );
+            }
+            return (
+              <div className="bg-field-wash p-6">
+                <h4 className="label mb-3">Formation</h4>
+                <div className="font-display text-3xl leading-none">{f.fit}</div>
+                <p className="text-sm text-ink-soft mt-3 max-w-read">{f.note}</p>
+                {f.club_needs_position !== null && (
+                  <p className="text-xs text-ink-faint mt-2">
+                    <span className="is-decided">
+                      {f.club_needs_position
+                        ? 'The club declares a need in this position.'
+                        : 'The club does not list this position among its needs.'}
+                    </span>
+                  </p>
+                )}
+              </div>
+            );
+          })()}
+
+          {(() => {
+            const s = report.tactical_analysis.style_compatibility;
+            if (s.compatibility_score === null) {
+              return (
+                <div className="border border-dashed border-rule-strong p-6">
+                  <h4 className="label mb-2">Style fit — not assessed</h4>
+                  <p className="text-sm text-ink-soft max-w-read">{s.basis}</p>
+                </div>
+              );
+            }
+            return (
+              <div className="bg-field-wash p-6">
+                <h4 className="label mb-3">Style fit</h4>
+                <div className="figure-lg">{s.compatibility_score.toFixed(1)}</div>
+                <div className="text-sm text-ink-soft mt-1">
+                  out of 100 — the same scale at every club
+                </div>
+                {s.demand_share !== null && (
+                  <div className="mt-3 pt-3 border-t border-rule">
+                    <div className="label">
+                      Covers {Math.round(s.demand_share * 100)}% of this club's declared style
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+        </div>
+
+        {report.tactical_analysis.style_compatibility.basis && (
+          <p className="mt-4 max-w-read text-xs text-ink-faint">
+            {report.tactical_analysis.style_compatibility.basis}
+          </p>
+        )}
+
+        <div className="mt-6">
+          <h4 className="label mb-2">Player trait</h4>
+          <div className="font-display text-xl">
+            {report.tactical_analysis.style_compatibility.player_style ?? 'Not assessed'}
           </div>
-          
-          <div className="bg-field-wash p-6 rounded-sm">
-            <h4 className="font-medium text-ink mb-4">Style Compatibility</h4>
-            <div className="text-center">
-              <div className="text-4xl font-bold text-field">{report.tactical_analysis.style_compatibility.compatibility_score}%</div>
-              <div className="text-lg text-field-dark mt-2">{report.tactical_analysis.style_compatibility.player_style}</div>
-            </div>
-          </div>
+          {report.tactical_analysis.style_compatibility.player_style_basis && (
+            <p className="text-sm text-ink-soft mt-1 max-w-read">
+              {report.tactical_analysis.style_compatibility.player_style_basis}
+            </p>
+          )}
         </div>
 
         <div className="mt-6">

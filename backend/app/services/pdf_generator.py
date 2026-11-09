@@ -672,28 +672,61 @@ class PDFReportGenerator:
 
         formation = data.get("formation_compatibility", {})
         if formation:
-            elements.append(Paragraph("<b>Formation Compatibility:</b>", self.styles["SubSection"]))
+            elements.append(Paragraph("<b>Formation:</b>", self.styles["SubSection"]))
+            # No percentage. The generator no longer produces one, because a
+            # set-membership test was never a percentage of anything.
+            verdict = formation.get("fit")
             elements.append(
                 Paragraph(
-                    f"{formation.get('fit', 'Unknown')} — score {formation.get('score', 0)}%"
-                    f" ({formation.get('note', '')})",
+                    f"{verdict}. {formation.get('note', '')}" if verdict
+                    else formation.get("note", "Formation not recorded."),
                     self.styles["BodyText"],
                 )
             )
+            needs = formation.get("club_needs_position")
+            if needs is not None:
+                elements.append(
+                    Paragraph(
+                        "The club declares a need in this position."
+                        if needs else
+                        "The club does not list this position among its needs.",
+                        self.styles["Caveat"],
+                    )
+                )
             elements.append(Spacer(1, 0.15 * inch))
 
         style = data.get("style_compatibility", {})
         if style:
-            elements.append(Paragraph("<b>Style Compatibility:</b>", self.styles["SubSection"]))
+            elements.append(Paragraph("<b>Style fit:</b>", self.styles["SubSection"]))
+            score = style.get("compatibility_score")
+            share = style.get("demand_share")
+            if isinstance(score, (int, float)) and not isinstance(score, bool):
+                line = f"{score:.1f} out of 100, on the same scale at every club"
+                if isinstance(share, (int, float)):
+                    line += f" — covering {share * 100:.0f}% of this club's declared style"
+                elements.append(Paragraph(line + ".", self.styles["BodyText"]))
+            else:
+                elements.append(
+                    Paragraph(
+                        style.get("basis", "Style fit not assessed."),
+                        self.styles["BodyText"],
+                    )
+                )
+            trait = style.get("player_style")
             elements.append(
                 Paragraph(
-                    f"Player style: {style.get('player_style', 'Unknown')} — "
-                    f"compatibility {style.get('compatibility_score', 0)}%",
+                    f"Player trait: {trait}." if trait else "Player trait: not assessed.",
                     self.styles["BodyText"],
                 )
             )
+            if style.get("player_style_basis"):
+                elements.append(
+                    Paragraph(style["player_style_basis"], self.styles["Caveat"])
+                )
             for note in style.get("notes", [])[:4]:
                 elements.append(Paragraph(f"• {note}", self.styles["BodyText"]))
+            if style.get("basis") and isinstance(score, (int, float)):
+                elements.append(Paragraph(style["basis"], self.styles["Caveat"]))
             elements.append(Spacer(1, 0.15 * inch))
 
         roles = data.get("role_suitability", {})
