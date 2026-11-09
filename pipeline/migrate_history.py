@@ -32,6 +32,11 @@ def main():
         """))
         # Where the spell began is better known than "when the row was written",
         # so existing rows inherit created_at.
+        #
+        # Deliberately unscoped: this is a schema migration, and a new column
+        # has to be backfilled for every tenant, not only the public one. The
+        # seeding scripts are the opposite case and are scoped; see
+        # tenancy.resolve_public_org.
         conn.execute(text("""
             UPDATE squad_memberships
             SET joined_at = COALESCE(created_at, NOW())

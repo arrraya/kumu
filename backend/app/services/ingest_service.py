@@ -215,7 +215,14 @@ def _ingest_club(db: Session, payload: IngestPayload, org_id: int) -> Dict[str, 
         "organization_id": org_id,
     })
 
-    team = db.query(models.Team).filter(models.Team.external_id == external_id).first()
+    # Scoped on the tenant as well as the key. stable_external_id already
+    # salts the id with org_id so a collision is not reachable today, but a
+    # lookup that is safe only because of how its key happens to be built is
+    # one refactor away from not being safe at all.
+    team = db.query(models.Team).filter(
+        models.Team.external_id == external_id,
+        models.Team.organization_id == org_id,
+    ).first()
     if not team:
         return {"name": club.name, "squad_size": 0}
 
@@ -249,9 +256,20 @@ def _ingest_club(db: Session, payload: IngestPayload, org_id: int) -> Dict[str, 
         indices = [(p.performance_index or {}).get("value") for p in members]
         inferred = scoring.infer_expected_index([i for i in indices if i])
         if inferred:
+            # Merged, not replaced, and scoped to the tenant.
+            #
+            # This wrote {"expected_index": N} over the whole requirements
+            # column. Anything else living there went with it - including
+            # "positions", the club's declared positional needs, which the
+            # tactical section now reads to say whether a club actually
+            # wants a player in this role. Inferring one field is no reason
+            # to drop the others.
+            current = dict(team.requirements or {})
+            current["expected_index"] = inferred
             db.execute(text(
-                "UPDATE teams SET requirements = CAST(:req AS JSON) WHERE id = :id"
-            ), {"req": json.dumps({"expected_index": inferred}), "id": team.id})
+                "UPDATE teams SET requirements = CAST(:req AS JSON) "
+                "WHERE id = :id AND organization_id = :oid"
+            ), {"req": json.dumps(current), "id": team.id, "oid": org_id})
 
     return {
         "name": club.name,

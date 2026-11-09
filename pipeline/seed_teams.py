@@ -10,6 +10,8 @@ import os
 
 from sqlalchemy import create_engine, text
 
+from tenancy import resolve_public_org
+
 # name, league, country, budget(M), formation, possession, pressing, positions, expected_index
 CLUBS = [
     # ---- Elite
@@ -49,11 +51,36 @@ def main():
 
     engine = create_engine(db_url)
     with engine.begin() as conn:
-        conn.execute(text("DELETE FROM scouting_reports"))
-        conn.execute(text("DELETE FROM player_team_matches"))
+        oid = resolve_public_org(conn)
+
+        # Every delete below is scoped to the public tenant.
+        #
+        # They were not. "DELETE FROM scouting_reports" and "DELETE FROM
+        # player_team_matches" had no WHERE at all, and the teams delete
+        # matched on team_type alone. On a single-tenant database that was
+        # invisible; on this one it means that the first time a client has
+        # their own clubs and their own reports loaded, re-seeding the public
+        # reference set deletes the customer's data along with it. The
+        # assumption held on the day it was written and stops holding the day
+        # Kumu does what it was built to do.
+        conn.execute(
+            text("DELETE FROM scouting_reports WHERE organization_id = :oid"),
+            {"oid": oid},
+        )
+        conn.execute(
+            text("DELETE FROM player_team_matches WHERE organization_id = :oid"),
+            {"oid": oid},
+        )
         # Only clubs: national teams live in the same table and are seeded
         # separately from real player data.
-        conn.execute(text("DELETE FROM teams WHERE team_type = 'club' OR team_type IS NULL"))
+        conn.execute(
+            text("""
+                DELETE FROM teams
+                WHERE organization_id = :oid
+                  AND (team_type = 'club' OR team_type IS NULL)
+            """),
+            {"oid": oid},
+        )
 
         for i, (name, league, country, budget_m, formation, poss, press, positions, expected) in enumerate(CLUBS, start=1):
             playing_style = {
@@ -72,12 +99,22 @@ def main():
                 },
                 "style": {"possession": poss > 0.6, "high_press": press > 0.72},
             }
+            # organization_id and team_type are written explicitly. Neither
+            # used to be: the column defaults live on the SQLAlchemy model and
+            # never reach a raw INSERT, so a club seeded today arrived with no
+            # tenant and no type. It was only ever visible because the tenancy
+            # migration ran once afterwards and swept every NULL into the
+            # public org - a one-off repair that this script was quietly
+            # depending on, and that would now also sweep up a client's rows.
             conn.execute(text("""
-                INSERT INTO teams (external_id, name, league, country, budget, formation,
+                INSERT INTO teams (organization_id, external_id, name, league, country,
+                                   budget, formation, team_type,
                                    playing_style, requirements, created_at)
-                VALUES (:external_id, :name, :league, :country, :budget, :formation,
+                VALUES (:oid, :external_id, :name, :league, :country,
+                        :budget, :formation, 'club',
                         CAST(:playing_style AS JSON), CAST(:requirements AS JSON), NOW())
             """), {
+                "oid": oid,
                 "external_id": f"club_{i:03d}", "name": name, "league": league,
                 "country": country, "budget": budget_m * 1_000_000, "formation": formation,
                 "playing_style": json.dumps(playing_style),

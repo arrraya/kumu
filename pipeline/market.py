@@ -19,6 +19,8 @@ import os
 import numpy as np
 from sqlalchemy import create_engine, text
 
+from tenancy import resolve_public_org
+
 SENSITIVITY = 0.15   # how strongly one match moves the price
 MAX_MATCH_MOVE = 0.10   # cap a single match at +/-10% so outliers stay plausible
 
@@ -149,7 +151,14 @@ def main():
         overall = float(np.mean([s for v in by_position.values() for s in v])) if by_position else 0.0
         print("Position baselines:", {k: round(v, 2) for k, v in sorted(baselines.items())})
 
-        conn.execute(text("DELETE FROM market_series"))
+        # Scoped. market_series is one of the tenant-owned tables, so an
+        # unqualified delete here wiped every client's series along with the
+        # public one each time the market was rebuilt.
+        oid = resolve_public_org(conn)
+        conn.execute(
+            text("DELETE FROM market_series WHERE organization_id = :oid"),
+            {"oid": oid},
+        )
 
         built = 0
         for pid, name, position, value, history in rows:
