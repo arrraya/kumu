@@ -797,8 +797,8 @@ class ScoutingReportGenerator:
         share = scored_weight / total_weight
 
         notes = [
-            "%s: %.0fth percentile among same-position peers"
-            % (d["asks"].capitalize(), d["standing"])
+            "%s: %s percentile among same-position peers"
+            % (d["asks"].capitalize(), ordinal(d["standing"]))
             for d in scored
         ]
         missing = [d for d in demands if d["standing"] is None]
@@ -873,17 +873,18 @@ class ScoutingReportGenerator:
             return {
                 "label": "No standout trait",
                 "basis": (
-                    "Below the %dth percentile of same-position peers on every "
-                    "trait measured; highest is %s at the %.0fth."
-                    % (int(self.DISTINCTIVE_PERCENTILE), top_label.lower(), top_pct)
+                    "Below the %s percentile of same-position peers on every "
+                    "trait measured; highest is %s at the %s."
+                    % (ordinal(self.DISTINCTIVE_PERCENTILE), top_label.lower(),
+                       ordinal(top_pct))
                 ),
             }
 
         return {
             "label": top_label,
             "basis": (
-                "%.0fth percentile among same-position peers on %s."
-                % (top_pct, top_label.lower())
+                "%s percentile among same-position peers on %s."
+                % (ordinal(top_pct), top_label.lower())
             ),
         }
 
