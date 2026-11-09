@@ -13,6 +13,7 @@ import {
 import { api } from '@/lib/api';
 import { Player, Team, Match } from '@/types';
 import PlayerCard from './PlayerCard';
+import ClubSearch from './ClubSearch';
 import MatchCard from './MatchCard';
 import PerformanceChart from './PerformanceChart';
 
@@ -31,6 +32,9 @@ const PlayerMatching: React.FC<PlayerMatchingProps> = ({
   setSelectedMatch,
   setActiveView
 }) => {
+  // Which direction the question runs. Kumü has always asked "which clubs
+  // suit this player"; a scout asks the inverse, and both belong here.
+  const [mode, setMode] = useState<'player' | 'club'>('player');
   const [players, setPlayers] = useState<Player[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
@@ -112,14 +116,40 @@ const PlayerMatching: React.FC<PlayerMatchingProps> = ({
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-      <div className="masthead mb-10">
-        <div className="label text-clay-ink mb-3">Player matching · which clubs fit</div>
-        <h1 className="font-display text-4xl md:text-5xl leading-none m-0">Player matching</h1>
+      <div className="masthead mb-8">
+        <div className="label text-clay-ink mb-3">
+          Matching · {mode === 'player' ? 'which clubs fit a player' : 'which players fit a club'}
+        </div>
+        <h1 className="font-display text-4xl md:text-5xl leading-none m-0">
+          {mode === 'player' ? 'Player matching' : 'Club search'}
+        </h1>
         <p className="mt-4 max-w-read text-lg text-ink-soft">
-          Pick a player and Kumü ranks the clubs they could join by how well the
-          squad, the style and the budget actually line up.
+          {mode === 'player'
+            ? 'Pick a player and Kumü ranks the clubs they could join by how well the squad, the style and the budget actually line up.'
+            : 'Start from the squad. Say what the club needs and Kumü ranks the players who could fill it — saying, for each one, how much of the brief it could actually judge.'}
         </p>
       </div>
+
+      <div className="flex gap-0 mb-10 border-b border-rule-strong">
+        {([['player', 'From a player'], ['club', 'From a club']] as const).map(([m, label]) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => setMode(m)}
+            className={`font-label text-label font-semibold uppercase px-4 py-3 border-b-2 -mb-px ${
+              mode === m
+                ? 'border-clay text-ink'
+                : 'border-transparent text-ink-faint hover:text-ink-soft'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {mode === 'club' && <ClubSearch />}
+      {mode === 'player' && (
+      <>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-1">
           <div className="bg-paper-card border border-rule p-5 mb-5">
@@ -249,6 +279,8 @@ const PlayerMatching: React.FC<PlayerMatchingProps> = ({
           )}
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 };

@@ -167,6 +167,20 @@ export const apiService = {
           recommended: match.offer?.recommended ?? 0,
         },
       }));
+    },
+
+    // Club-first. /calculate takes a player and ranks clubs; this takes a
+    // club and ranks players, which is the direction a scout works in.
+    searchForTeam: async (body: {
+      team_id: string
+      positions?: string[]
+      max_market_value?: number
+      min_performance_index?: number
+      max_age?: number
+      limit?: number
+    }) => {
+      const response = await api.post('/api/v1/matches/search', body);
+      return response.data;
     }
   },
   

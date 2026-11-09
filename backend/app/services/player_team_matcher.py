@@ -7,7 +7,10 @@ from typing import Dict, List
 class Player:
     """Represents a football player with performance metrics"""
 
-    def __init__(self, player_id: str, name: str, age: int, position: str):
+    def __init__(self, player_id: str, name: str, age, position: str):
+        # age is Optional[int]: None where the source carries no date of
+        # birth, which the scoring reads as "not assessed" rather than
+        # substituting a number.
         self.id = player_id
         self.name = name
         self.age = age
@@ -458,13 +461,21 @@ class PlayerTeamMatcher:
         trend = player.calculate_performance_index().get("trend", 0)
         trend_score = max(0.0, min(1.0, 0.5 + float(trend) / 10))
 
-        # Age is uniform in this dataset (no birth dates available), so it is
-        # held neutral rather than pretending to discriminate. Real ages make
-        # this branch meaningful without further changes.
+        # No date of birth in this source, so age is usually None and the
+        # component is held neutral rather than pretending to discriminate.
+        #
+        # The test used to be "not age or age == ASSUMED_AGE", because the
+        # adapters laundered a missing age into 26 before it arrived. Reading
+        # a real 26-year-old as unknown is the cost of recognising a sentinel
+        # instead of an absence. The adapters now pass None through, so the
+        # absence is the thing being tested.
         age = getattr(player, "age", None)
-        age_score = 0.5 if not age or age == self.ASSUMED_AGE else (
-            max(0.0, 1 - (age - 23) / 15) if age < 30 else 0.2
-        )
+        if not isinstance(age, (int, float)) or isinstance(age, bool):
+            age_score = 0.5
+        elif age < 30:
+            age_score = max(0.0, 1 - (age - 23) / 15)
+        else:
+            age_score = 0.2
 
         if team is None:
             return age_score * 0.4 + trend_score * 0.6
@@ -548,7 +559,7 @@ class PlayerTeamMatcher:
         player = Player(
             player_id=str(db_player.id),
             name=db_player.name or "",
-            age=db_player.age or 26,
+            age=db_player.age,
             position=db_player.position or "",
         )
         player.market_value = float(db_player.market_value or 0)
