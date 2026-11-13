@@ -53,7 +53,10 @@ from typing import Dict, Optional
 import numpy as np
 from scipy.signal import savgol_coeffs, savgol_filter
 
-from metrics import _as_array, _valid_xy
+try:
+    from .metrics import _as_array, _valid_xy
+except ImportError:  # run as a script
+    from metrics import _as_array, _valid_xy
 
 
 # --- declared parameters ---------------------------------------------------
