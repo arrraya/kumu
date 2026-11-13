@@ -70,3 +70,6 @@ frontend/.next/
 
 frontend/tsconfig.tsbuildinfo
 
+
+# Pose data: hundreds of MB, downloaded not authored
+data/
