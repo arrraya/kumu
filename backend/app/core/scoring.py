@@ -38,6 +38,17 @@ PROVIDER_POSITION_MAP = {
     "Right Wing": "RW", "Left Wing": "LW",
     "Center Forward": "ST", "Right Center Forward": "ST", "Left Center Forward": "ST",
     "Secondary Striker": "ST",
+    # SkillCorner's vocabulary. It agrees with StatsBomb on most roles and
+    # not on these: it says "Winger" where StatsBomb says "Wing", and names
+    # a lone holding or attacking midfielder without the "Center" prefix.
+    # Without them, 28 of the 101 A-League players `prepare_player` is
+    # handed come back with no position and are dropped in silence.
+    "Right Winger": "RW", "Left Winger": "LW",
+    "Attacking Midfield": "CAM",
+    "Defensive Midfield": "CDM",
+    # A left or right forward alongside a centre forward is a second
+    # striker, which is what Kumu already calls that role.
+    "Left Forward": "ST", "Right Forward": "ST",
 }
 
 # Some providers draw finer distinctions than Kumu's ten positions can carry.
@@ -104,6 +115,11 @@ def rate_history(history: List[Dict[str, Any]], position: Optional[str]) -> List
     """Fill in a rating for any appearance that does not carry one.
 
     Clients with their own rating keep it; the rest get Kumu's, role-aware.
+
+    `position` wants the provider's own name, not a normalised code:
+    PROVIDER_GROUP_OVERRIDE is keyed on the raw string, and `rating_group`
+    normalises internally anyway, so a code still works and a raw name
+    works better.
     """
     group = rating_group(position)
     rated = []

@@ -90,7 +90,16 @@ def prepare_player(record: PlayerRecord, scales: Dict[str, Tuple[float, float]],
         return None
 
     history = [h.model_dump(exclude_none=True) for h in record.performance_history]
-    history = scoring.rate_history(history, position)
+    # The provider's own position name, not the normalised code: Kumu keeps
+    # PROVIDER_GROUP_OVERRIDE because label and rating group answer different
+    # questions - a Right Midfield is labelled RW for want of an RM, but
+    # defends like a midfielder. Normalising first threw the raw name away, so
+    # the override never fired on this path and every RM and LM a client
+    # loaded was rated as a winger. pipeline/metrics.py passes the raw name
+    # and the reference population was rated with the override live, so the
+    # two populations were on different yardsticks while the percentiles
+    # compared them to each other.
+    history = scoring.rate_history(history, record.position)
 
     raw = scoring.raw_index(history)
     index = None
