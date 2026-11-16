@@ -127,7 +127,13 @@ def draw_pitch(ax, xlim, ylim) -> None:
 
 def render(clip: Dict[str, object], out_path: str, fps: float = 25.0,
            elev: float = 14.0, azim: float = 52.0, buffer_m: float = 1.55,
-           dpi: int = 110) -> str:
+           dpi: int = 110, name: Optional[str] = None) -> str:
+    """Render one clip. `name` is what the headline says.
+
+    Without it the headline reads "Player 560986", a database id sitting
+    above prose the rest of the report words carefully. The renderer has
+    no way to know a name, so whoever cut the clip has to supply one.
+    """
     traj = clip["traj"]
     n = clip["n"]
     pid = clip["player_id"]
@@ -138,11 +144,11 @@ def render(clip: Dict[str, object], out_path: str, fps: float = 25.0,
     step_set = set(int(f) for f in step_frames)
 
     hip = traj["midHip"]
-    fig = plt.figure(figsize=(9.6, 6.4), facecolor=PAPER)
+    fig = plt.figure(figsize=(8.2, 6.4), facecolor=PAPER)
     # A 3D axes left to itself keeps enormous margins and the figure ends
     # up a tenth of the frame. Placed by hand: text column on the left,
     # the body given the rest.
-    ax = fig.add_axes([0.30, 0.04, 0.69, 0.92], projection="3d",
+    ax = fig.add_axes([0.25, 0.04, 0.74, 0.92], projection="3d",
                       facecolor=PAPER)
     ax.view_init(elev=elev, azim=azim)
     ax.set_axis_off()
@@ -152,7 +158,7 @@ def render(clip: Dict[str, object], out_path: str, fps: float = 25.0,
         # zoom enlarges the drawing inside its box: a 3D axes reserves room
         # for panes and ticks that are switched off here, and without this
         # the body sits small in the middle of its own frame.
-        ax.set_box_aspect([1.0, 1.0, z_top / (2.0 * buffer_m)], zoom=1.55)
+        ax.set_box_aspect([1.0, 1.0, z_top / (2.0 * buffer_m)], zoom=1.95)
     except (AttributeError, TypeError):
         pass
 
@@ -187,7 +193,7 @@ def render(clip: Dict[str, object], out_path: str, fps: float = 25.0,
     footer = fig.text(L, 0.055, "", **LABEL_KW)
 
     kicker.set_text(spaced("SKILLCORNER BODY POSE  ·  25 FPS  ·  MEASURED"))
-    title.set_text("Player %d" % pid)
+    title.set_text(name or ("Player %d" % pid))
 
     def frame(i: int):
         pts = {j: traj[j][i] for j in ALL_JOINTS}
@@ -269,6 +275,8 @@ def main() -> int:
     ap.add_argument("--dpi", type=int, default=110)
     ap.add_argument("--elev", type=float, default=14.0)
     ap.add_argument("--azim", type=float, default=52.0)
+    ap.add_argument("--name", default=None,
+                    help="Headline name; the player id is used without it")
     ap.add_argument("--buffer", type=float, default=1.55,
                     help="Half-window in metres around the hip.")
     args = ap.parse_args()
@@ -276,7 +284,8 @@ def main() -> int:
     clip = read_clip(args.file, args.player)
     print("[*] player %s, %d frames" % (clip["player_id"], clip["n"]))
     out = render(clip, args.out, fps=args.fps, elev=args.elev,
-                 azim=args.azim, dpi=args.dpi, buffer_m=args.buffer)
+                 azim=args.azim, dpi=args.dpi, buffer_m=args.buffer,
+                 name=args.name)
     print("[OK] %s" % out)
     return 0
 
