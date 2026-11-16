@@ -88,6 +88,7 @@ index asks for three appearances before it says anything.
 
 import argparse
 import collections
+import hashlib
 import json
 import sys
 
@@ -319,11 +320,123 @@ def derive(match_ids=None, progress=True) -> dict:
     return dict(keepers)
 
 
+SOURCE = "statsbomb_wc2022"
+
+
+def to_payload(keepers, min_matches=3) -> dict:
+    """The goalkeepers as Kumu's ingest contract wants them.
+
+    Position goes in as "Goalkeeper", the provider's own word, because
+    PROVIDER_GROUP_OVERRIDE is keyed on the raw name and `rate_history`
+    normalises it internally anyway. No index is supplied: the schema
+    says it is derived, and it is normalised across the whole population,
+    which one competition cannot see.
+    """
+    players = []
+    for name, entry in sorted(keepers.items()):
+        history = entry["history"]
+        if len(history) < min_matches:
+            continue
+        players.append({
+            # sha1, not hash(): Python randomises string hashing per
+            # process, so the built-in would mint a new id on every run and
+            # the ON CONFLICT update would insert 28 duplicates instead.
+            "external_id": "sbgk_" + hashlib.sha1(
+                name.strip().lower().encode("utf-8")).hexdigest()[:16],
+            "name": name,
+            "position": "Goalkeeper",
+            "nationality": entry["team"],
+            "current_team": entry["team"],
+            "metrics": {"goalkeeping": entry["metrics"]},
+            "performance_history": [
+                {k: v for k, v in record.items() if k in MATCH_FIELDS}
+                for record in history
+            ],
+        })
+    return {"contract_version": "1.0", "source": SOURCE, "players": players}
+
+
+MATCH_FIELDS = {
+    "match_id", "minutes", "saves", "shots_on_target_faced",
+    "goals_conceded", "goals_prevented", "claims", "sweeper_actions",
+    "pass_completion",
+}
+
+
+def write(payload, org_id, i_mean_it) -> int:
+    """Load into a tenant, normally the public reference population.
+
+    The other loaders in this pipeline refuse the public organisation
+    without `--i-mean-it`, because a client's players landing there would
+    shift percentiles for people who never asked. This one is pointed at
+    it on purpose - Kumu has no goalkeepers to compare against, which is
+    the whole reason the position reported an unscaled index - so the
+    flag is still required, and still has to be typed.
+    """
+    import os
+
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.orm import sessionmaker
+
+    sys.path.insert(0, "backend")
+    sys.path.insert(0, "../backend")
+    from app.schemas.ingest import IngestPayload, describe_capabilities
+    from app.services import ingest_service
+
+    url = os.environ.get("DATABASE_URL")
+    if not url:
+        raise SystemExit("Set DATABASE_URL first (source ~/.kumu_env).")
+
+    db = sessionmaker(bind=create_engine(url))()
+    public = db.execute(
+        text("SELECT id, name FROM organizations WHERE slug = 'public'")
+    ).fetchone()
+    public_id = int(public[0]) if public else None
+
+    if org_id is None:
+        if public_id is None:
+            raise SystemExit("No public organisation to load into.")
+        org_id = public_id
+    if org_id == public_id and not i_mean_it:
+        raise SystemExit(
+            "Organisation %d is the public reference population: every "
+            "client's percentiles are computed against it. That is where "
+            "these belong, but pass --i-mean-it to say so." % org_id
+        )
+
+    name = db.execute(text("SELECT name FROM organizations WHERE id = :i"),
+                      {"i": org_id}).fetchone()
+    if not name:
+        raise SystemExit("No organisation with id %d." % org_id)
+    print(f"Escribiendo en la organizacion {org_id}: {name[0]}")
+
+    parsed = IngestPayload(**payload)
+    capability = describe_capabilities(parsed)["capabilities"]
+    print(f"  goalkeeper_rating: {capability['goalkeeper_rating']}")
+
+    org_ids = [org_id] if public_id is None else sorted({org_id, public_id})
+    result = ingest_service.ingest(db, parsed, org_id, org_ids)
+    print(f"  escritos: {result.get('players_written')}")
+    if result.get("players_skipped"):
+        print(f"  descartados: {result['players_skipped']}")
+    if result.get("positions_without_reference"):
+        print("  sin poblacion de referencia: "
+              f"{result['positions_without_reference']}")
+    db.close()
+    return int(result.get("players_written") or 0)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--match", type=int, action="append", default=None)
     parser.add_argument("--out", default=None)
     parser.add_argument("--min-matches", type=int, default=3)
+    parser.add_argument("--write", action="store_true",
+                        help="Write to the database")
+    parser.add_argument("--org", type=int, default=None,
+                        help="Tenant to write into; the public one by default")
+    parser.add_argument("--i-mean-it", action="store_true",
+                        help="Confirm writing into the public population")
     args = parser.parse_args()
 
     keepers = derive(args.match)
@@ -359,6 +472,14 @@ def main() -> int:
         with open(args.out, "w", encoding="utf-8") as handle:
             json.dump(keepers, handle, indent=1, ensure_ascii=False)
         print(f"\n-> {args.out}")
+
+    if not args.write:
+        print("\nNada escrito. Pasa --write para cargar.")
+        return 0
+
+    payload = to_payload(keepers, args.min_matches)
+    print(f"\nCargando {len(payload['players'])} arqueros...")
+    write(payload, args.org, args.i_mean_it)
     return 0
 
 
