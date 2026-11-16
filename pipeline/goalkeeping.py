@@ -90,7 +90,17 @@ import argparse
 import collections
 import hashlib
 import json
+import os
 import sys
+
+# Resolved from this file, not from the working directory. The two
+# `sys.path.insert(0, "backend")` calls this replaces only worked when the
+# script happened to be run from the repository root, and failed with
+# "No module named 'app'" from anywhere else - including the folder the
+# script itself lives in.
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if os.path.join(REPO, "backend") not in sys.path:
+    sys.path.insert(0, os.path.join(REPO, "backend"))
 
 WORLD_CUP = {"competition_id": 43, "season_id": 106}
 
@@ -378,8 +388,6 @@ def write(payload, org_id, i_mean_it) -> int:
     from sqlalchemy import create_engine, text
     from sqlalchemy.orm import sessionmaker
 
-    sys.path.insert(0, "backend")
-    sys.path.insert(0, "../backend")
     from app.schemas.ingest import IngestPayload, describe_capabilities
     from app.services import ingest_service
 
@@ -442,8 +450,6 @@ def main() -> int:
     keepers = derive(args.match)
     print(f"\nArqueros: {len(keepers)}")
 
-    sys.path.insert(0, "backend")
-    sys.path.insert(0, "../backend")
     from app.core.scoring import match_rating, raw_index  # noqa: E402
 
     rated = []
