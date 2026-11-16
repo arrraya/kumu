@@ -23,10 +23,24 @@ CONTRACT_VERSION = "1.0"
 
 POSITIONS = {"GK", "CB", "RB", "LB", "CDM", "CM", "CAM", "RW", "LW", "ST"}
 
-# A payload carries the provider's own position name, so the check has to
-# accept both spellings. `scoring.PROVIDER_POSITION_MAP` is the full
-# vocabulary; these are the ones that reach GK.
-GOALKEEPER_NAMES = {"GK", "Goalkeeper"}
+
+
+def _position_of(record) -> Optional[str]:
+    """The Kumu position a record will actually load as.
+
+    `describe_capabilities` used to test `position in POSITIONS`, which is
+    the set of Kumu's own codes, while `prepare_player` runs the provider
+    name through `normalize_position` first. Two readings of one field, and
+    they disagreed for everybody who speaks a provider's vocabulary: a file
+    of StatsBomb or SkillCorner positions was told its positions were "not
+    recognised and ignored" and had `comparison` reported as unavailable,
+    then loaded without trouble. `/ingest/validate` is deliberately open so
+    a client can judge a file before opening an account, which makes this
+    the first thing a prospective client sees about their own data.
+    """
+    from app.core.scoring import normalize_position
+
+    return normalize_position(record.position)
 
 # The highest rating the contract will accept. See MatchRecord for why it
 # is 30 rather than 10, and why it is a sanity bound rather than a scale.
@@ -206,7 +220,8 @@ def describe_capabilities(payload: IngestPayload) -> Dict[str, Any]:
     players = payload.players
     total = len(players)
 
-    with_position = sum(1 for p in players if p.position in POSITIONS)
+    positions = {id(p): _position_of(p) for p in players}
+    with_position = sum(1 for p in players if positions[id(p)])
     with_metrics = sum(
         1 for p in players
         if any(v is not None for cat in (p.metrics.passing, p.metrics.shooting,
@@ -216,7 +231,7 @@ def describe_capabilities(payload: IngestPayload) -> Dict[str, Any]:
     with_history = sum(1 for p in players if len(p.performance_history) >= MIN_MATCHES_FOR_FORM)
     with_value = sum(1 for p in players if p.market_value)
     with_movement = sum(1 for p in players if p.metrics.movement is not None)
-    keepers = [p for p in players if p.position in GOALKEEPER_NAMES]
+    keepers = [p for p in players if positions[id(p)] == "GK"]
     with_goalkeeping = sum(1 for p in keepers if p.metrics.goalkeeping is not None)
 
     club = payload.club
@@ -224,7 +239,8 @@ def describe_capabilities(payload: IngestPayload) -> Dict[str, Any]:
     has_style = bool(club and club.possession is not None
                      and club.pressing_intensity is not None)
 
-    unknown_positions = sorted({p.position for p in players if p.position not in POSITIONS})
+    unknown_positions = sorted({p.position for p in players
+                                if not positions[id(p)]})
 
     capabilities = {
         "comparison": {
@@ -272,7 +288,8 @@ def describe_capabilities(payload: IngestPayload) -> Dict[str, Any]:
     if unknown_positions:
         warnings.append(
             f"Positions not recognised and ignored: {', '.join(unknown_positions)}. "
-            f"Expected one of: {', '.join(sorted(POSITIONS))}."
+            f"Kumu's own codes are {', '.join(sorted(POSITIONS))}, and it "
+            f"also reads the position names StatsBomb and SkillCorner use."
         )
     if club and not club.squad:
         warnings.append(
