@@ -98,7 +98,7 @@ def derive_anchor(db, market: str) -> Optional[Dict[str, Any]]:
             JOIN organizations o ON o.id = p.organization_id
             WHERE o.kind <> 'public'
               AND p.market_value IS NOT NULL AND p.market_value > 0
-              AND p.(performance_index->>'value') IS NOT NULL
+              AND (p.performance_index->>'value') IS NOT NULL
         """)).fetchall()
     except Exception:  # noqa: BLE001 - measurement is optional, curation remains
         return None

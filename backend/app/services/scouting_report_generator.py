@@ -2047,7 +2047,7 @@ class ScoutingReportGenerator:
                 WHERE m.team_id = :team_id AND p.position = :position
                   AND m.left_at IS NULL
                   AND m.left_at IS NULL
-                  AND p.name <> :name AND p.(performance_index->>'value') IS NOT NULL
+                  AND p.name <> :name AND (p.performance_index->>'value') IS NOT NULL
                   AND m.organization_id IN :org_ids
                 ORDER BY (p.performance_index->>'value')::float DESC
                 LIMIT 5
@@ -2074,7 +2074,7 @@ class ScoutingReportGenerator:
                 SELECT p.name, p.current_team, p.performance_index
                 FROM players p, stats
                 WHERE p.position = :position AND p.name <> :name
-                  AND p.(performance_index->>'value') IS NOT NULL
+                  AND (p.performance_index->>'value') IS NOT NULL
                   AND p.organization_id IN :org_ids
                 ORDER BY ABS(
                     (p.performance_index->>'value')::float - stats.median_index
