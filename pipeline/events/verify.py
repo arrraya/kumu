@@ -115,9 +115,20 @@ def main() -> int:
         print(f"   {'pos':5s} {'n':>3s} {'con idx':>8s} {'escalado':>9s} "
               f"{'min':>6s} {'max':>6s}")
         for pos, n, idx, scaled, lo, hi in rows:
-            flag = "" if scaled == n else "   <- SIN ESCALA"
-            print(f"   {str(pos):5s} {n:3d} {idx:8d} {scaled:9d} "
-                  f"{lo:6} {hi:6}{flag}")
+            # min() and max() over a position whose players all lack an
+            # index come back NULL, and this line used to format them as
+            # numbers. Written to check that absence is handled, it fell
+            # over the first time it met one: goalkeepers, once Kumu
+            # stopped rating them on outfield play.
+            if idx == 0:
+                flag = "   <- SIN INDICE (ninguno se puede valorar)"
+            elif scaled == n:
+                flag = ""
+            else:
+                flag = "   <- SIN ESCALA"
+            span = (f"{lo:6} {hi:6}" if lo is not None and hi is not None
+                    else f"{'-':>6s} {'-':>6s}")
+            print(f"   {str(pos):5s} {n:3d} {idx:8d} {scaled:9d} {span}{flag}")
         missing = q("SELECT count(*) FROM players WHERE organization_id = :o "
                     "AND performance_index IS NULL", o=org)[0][0]
         print(f"   sin indice: {missing}")
