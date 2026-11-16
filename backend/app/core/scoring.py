@@ -17,7 +17,16 @@ POSITIONS = ["GK", "CB", "RB", "LB", "CDM", "CM", "CAM", "RW", "LW", "ST"]
 
 # What a match rating should reward, by role.
 POSITION_GROUP = {
-    "GK": "defense", "CB": "defense", "RB": "defense", "LB": "defense",
+    # A goalkeeper is not a defender with the ball at his feet. Rated as one,
+    # five of the seven inputs below are zero in every appearance - goals,
+    # assists, key passes, shots, tackles - and what is left is pass
+    # completion. Across 21 goalkeeper appearances that produced the narrowest
+    # spread of any position, 5.1 points against 29.0 for a left winger, and a
+    # keeper who completed every pass rated 0.16 above one who completed three
+    # in four. The formula was not finding similar keepers; it was not
+    # measuring goalkeeping.
+    "GK": "goalkeeper",
+    "CB": "defense", "RB": "defense", "LB": "defense",
     "CDM": "midfield", "CM": "midfield",
     "CAM": "attack", "RW": "attack", "LW": "attack", "ST": "attack",
 }
@@ -85,14 +94,72 @@ def rating_group(raw_position: Optional[str]) -> str:
     return POSITION_GROUP.get(normalize_position(raw_position) or "", "midfield")
 
 
-def match_rating(stats: Dict[str, Any], group: str) -> float:
+# What an appearance has to carry before a goalkeeper can be rated. Presence
+# is the test, not size: a keeper who faced nothing has zeros here and that is
+# a figure, while a source with no goalkeeping at all has nothing and that is
+# not. Same rule `_movement` applies in the report.
+GOALKEEPING_INPUTS = ("saves", "shots_on_target_faced", "goals_prevented")
+
+
+def has_goalkeeping(stats: Dict[str, Any]) -> bool:
+    return all(
+        isinstance(stats.get(key), (int, float)) and not isinstance(stats.get(key), bool)
+        for key in GOALKEEPING_INPUTS
+    )
+
+
+def goalkeeper_rating(stats: Dict[str, Any]) -> Optional[float]:
+    """Rate a goalkeeper, or decline to.
+
+    Returns None when the appearance carries no goalkeeping, so the keeper
+    ends up without an index by the same route as a player with two
+    appearances: the data to rate him is not there. No special case, no
+    exclusion list - the two places that skipped goalkeepers by name did it
+    silently and did not agree with the client path, which rated them on
+    outfield play instead.
+
+    `goals_prevented` carries the weight because it is the job: a shot on
+    target is worth what a model expects it to be worth, and stopping more
+    than that is what separates keepers. It is also the only term that goes
+    negative, which is why a bad afternoon can rate below the base.
+    """
+    if not has_goalkeeping(stats):
+        return None
+
+    saves = float(stats.get("saves") or 0)
+    faced = float(stats.get("shots_on_target_faced") or 0)
+    prevented = float(stats.get("goals_prevented") or 0)
+    claims = float(stats.get("claims") or 0)
+    sweeper = float(stats.get("sweeper_actions") or 0)
+    completion = float(stats.get("pass_completion") or 0)
+
+    # A keeper who faced nothing cannot be judged on a save percentage, so
+    # that term sits out rather than reading as nought per cent saved.
+    save_rate = (saves / faced) if faced > 0 else None
+
+    rating = 5.0 + prevented * 2.0 + claims * 0.15 + sweeper * 0.25
+    rating += completion * 0.5
+    if save_rate is not None:
+        rating += save_rate * 2.0
+    return rating
+
+
+def match_rating(stats: Dict[str, Any], group: str) -> Optional[float]:
     """Rate one match according to what the role is actually asked to do.
+
+    Returns None when the role cannot be rated from what the appearance
+    carries. Only goalkeepers reach that today: the outfield formulas read
+    counting stats every event feed has, while goalkeeping needs fields most
+    of them do not carry at all.
 
     A single offensive formula left defenders with nothing to vary on but pass
     completion, which barely moves between centre-backs, so every centre-back
     scored practically the same. Uncapped on purpose: a hat-trick should stand
     above a one-goal game rather than hitting a ceiling.
     """
+    if group == "goalkeeper":
+        return goalkeeper_rating(stats)
+
     goals = stats.get("goals") or 0
     assists = stats.get("assists") or 0
     key_passes = stats.get("key_passes") or 0
@@ -115,6 +182,10 @@ def rate_history(history: List[Dict[str, Any]], position: Optional[str]) -> List
     """Fill in a rating for any appearance that does not carry one.
 
     Clients with their own rating keep it; the rest get Kumu's, role-aware.
+    An appearance Kumu cannot rate - a goalkeeper from a source with no
+    goalkeeping in it - is left without one rather than given a number from
+    the wrong formula. `raw_index` counts only rated appearances, so such a
+    player reaches no index by the same route as one with two matches.
 
     `position` wants the provider's own name, not a normalised code:
     PROVIDER_GROUP_OVERRIDE is keyed on the raw string, and `rating_group`
@@ -126,7 +197,11 @@ def rate_history(history: List[Dict[str, Any]], position: Optional[str]) -> List
     for entry in history:
         record = dict(entry)
         if not isinstance(record.get("rating"), (int, float)):
-            record["rating"] = round(match_rating(record, group), 2)
+            rating = match_rating(record, group)
+            if rating is None:
+                record.pop("rating", None)
+            else:
+                record["rating"] = round(rating, 2)
         rated.append(record)
     return rated
 

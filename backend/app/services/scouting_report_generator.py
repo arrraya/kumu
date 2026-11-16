@@ -357,6 +357,10 @@ class ScoutingReportGenerator:
 
     def generate_executive_summary(self, player_data: Dict, team_data: Dict, org_ids=None) -> Dict:
         """Generate executive summary with key findings"""
+        unrateable = self.goalkeeping_basis(player_data)
+        if unrateable:
+            return self._no_executive_summary(player_data, team_data, unrateable)
+
         match_score = player_data.get("match_score", 0)
 
         # Determine recommendation strength
@@ -412,6 +416,33 @@ class ScoutingReportGenerator:
                 player_data, team_data, metric_percentile_average, performance_percentile
             ),
             "executive_statement": f"{player_data['name']} represents a {recommendation.lower()} acquisition for {team_data['name']}. Statistical analysis places the player in the {ordinal(performance_percentile)} percentile for their position in {team_data.get('league') or 'their league'}.",
+        }
+
+    def _no_executive_summary(self, player_data: Dict, team_data: Dict,
+                              reason: str) -> Dict:
+        """The headline when there is nothing to recommend from.
+
+        `recommendation` is read off `match_score`, which `generate_full_report`
+        sets to a placeholder 75.0 when the caller supplies none. For a
+        goalkeeper nobody could rate, that placeholder came out of the report
+        as RECOMMENDED and "proceed with negotiations" - a transfer verdict
+        assembled from a default. The percentiles below it were no better:
+        they averaged outfield metrics for a player who is not judged on any
+        of them.
+        """
+        return {
+            "recommendation": None,
+            "action": None,
+            "match_score": None,
+            "overall_percentile": None,
+            "metric_percentile_average": None,
+            "percentile_basis": reason,
+            "key_findings": [{"text": reason, "origin": "decided"}],
+            "executive_statement": (
+                f"{player_data['name']} is not assessed for "
+                f"{team_data['name']}. {reason}"
+            ),
+            "basis": reason,
         }
 
     def _key_findings(self, player_data: Dict, team_data: Dict,
@@ -1215,6 +1246,48 @@ class ScoutingReportGenerator:
         if all(isinstance(v, (int, float)) for v in values.values()):
             return values
         return None
+
+    # What an appearance has to carry before a goalkeeper can be rated.
+    # Declared here as well as in `scoring` so the report can say what is
+    # missing by name rather than "no data".
+    GOALKEEPING_INPUTS = ("saves_per_90", "save_percentage",
+                          "goals_prevented_per_90")
+
+    def _is_goalkeeper(self, player_data: Dict) -> bool:
+        return (player_data.get("position") or "").upper() == "GK"
+
+    def _goalkeeping(self, player_data: Dict) -> Optional[Dict]:
+        """The goalkeeping metrics, or None when the source has none.
+
+        Sibling of `_movement`, and for the same reason: an event feed
+        records what happened to the ball, not what a keeper did with the
+        shots. Before this, a goalkeeper was rated on the outfield formula,
+        which leaves five of its seven inputs at zero and scores him on his
+        pass completion - and the report went on to print RECOMMENDED and
+        "proceed with negotiations" over it.
+        """
+        metrics = (player_data.get("metrics") or {}).get("goalkeeping") or {}
+        values = {k: metrics.get(k) for k in self.GOALKEEPING_INPUTS}
+        if all(isinstance(v, (int, float)) for v in values.values()):
+            return values
+        return None
+
+    def goalkeeping_basis(self, player_data: Dict) -> Optional[str]:
+        """Why a goalkeeper carries no figures, or None if he does.
+
+        Returns None for an outfield player too: nothing to explain.
+        """
+        if not self._is_goalkeeper(player_data):
+            return None
+        if self._goalkeeping(player_data) is not None:
+            return None
+        return (
+            "Kumu does not rate this goalkeeper: the source carries no "
+            "goalkeeping (saves, save percentage, goals prevented). Every "
+            "other metric here describes outfield play, and scoring a keeper "
+            "on them measures his distribution. Supply those three and the "
+            "rating, the percentile and the recommendation all start working."
+        )
 
     def generate_physical_profile(self, player_data: Dict) -> Dict:
         """Generate physical and athletic profile"""

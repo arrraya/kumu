@@ -23,6 +23,11 @@ CONTRACT_VERSION = "1.0"
 
 POSITIONS = {"GK", "CB", "RB", "LB", "CDM", "CM", "CAM", "RW", "LW", "ST"}
 
+# A payload carries the provider's own position name, so the check has to
+# accept both spellings. `scoring.PROVIDER_POSITION_MAP` is the full
+# vocabulary; these are the ones that reach GK.
+GOALKEEPER_NAMES = {"GK", "Goalkeeper"}
+
 # The highest rating the contract will accept. See MatchRecord for why it
 # is 30 rather than 10, and why it is a sanity bound rather than a scale.
 MAX_RATING = 30.0
@@ -49,6 +54,33 @@ class DefensiveMetrics(BaseModel):
     aerial_duels_won: Optional[float] = Field(None, ge=0)
 
 
+class GoalkeepingMetrics(BaseModel):
+    """What a goalkeeper is actually judged on.
+
+    Absent from every feed Kumu reads today, and the reason a goalkeeper
+    carries no index. Every other metric here describes outfield play, so
+    rating a keeper on them measured his distribution and called it
+    goalkeeping: across 21 goalkeeper appearances loaded from SkillCorner,
+    goals, assists, key passes, shots and tackles were zero in all 21, and
+    what moved the rating was pass completion. A keeper who completed 100%
+    of his passes scored 0.16 above one who completed 76%.
+
+    So these were declared before anything fills them, the way
+    MovementMetrics was: `goals_prevented_per_90` is the one that matters -
+    shots on target are worth a model's expected goals, and a keeper's job
+    is to beat it. The rest describe the parts of the job that are not
+    shot-stopping.
+    """
+
+    saves_per_90: Optional[float] = Field(None, ge=0)
+    save_percentage: Optional[float] = Field(None, ge=0, le=1)
+    # Expected goals faced minus goals conceded. Negative is a keeper letting
+    # in more than the shots deserved, so this one has no lower bound.
+    goals_prevented_per_90: Optional[float] = None
+    claims_per_90: Optional[float] = Field(None, ge=0)
+    sweeper_actions_per_90: Optional[float] = Field(None, ge=0)
+
+
 class MovementMetrics(BaseModel):
     """Tracking data. Absent from most event feeds; the physical profile
     declares itself unavailable rather than inventing values."""
@@ -63,6 +95,10 @@ class PlayerMetrics(BaseModel):
     shooting: ShootingMetrics = Field(default_factory=ShootingMetrics)
     defensive: DefensiveMetrics = Field(default_factory=DefensiveMetrics)
     movement: Optional[MovementMetrics] = None
+    # Like movement: absent rather than empty, so a source that carries no
+    # goalkeeping says so instead of reporting a keeper with nothing to his
+    # name.
+    goalkeeping: Optional[GoalkeepingMetrics] = None
 
 
 class MatchRecord(BaseModel):
@@ -106,6 +142,18 @@ class MatchRecord(BaseModel):
     interceptions: Optional[float] = Field(None, ge=0)
     progressive_passes: Optional[float] = Field(None, ge=0)
     pass_completion: Optional[float] = Field(None, ge=0, le=1)
+
+    # Goalkeeping, per appearance. A keeper who faced nothing has zeros here,
+    # which is a figure; a source with no goalkeeping at all leaves them
+    # absent, which is not. `scoring.match_rating` tells the two apart and
+    # declines to rate the second.
+    saves: Optional[float] = Field(None, ge=0)
+    shots_on_target_faced: Optional[float] = Field(None, ge=0)
+    goals_conceded: Optional[float] = Field(None, ge=0)
+    # Expected goals of the shots on target faced, minus the goals conceded.
+    goals_prevented: Optional[float] = None
+    claims: Optional[float] = Field(None, ge=0)
+    sweeper_actions: Optional[float] = Field(None, ge=0)
 
 
 class PlayerRecord(BaseModel):
@@ -168,6 +216,8 @@ def describe_capabilities(payload: IngestPayload) -> Dict[str, Any]:
     with_history = sum(1 for p in players if len(p.performance_history) >= MIN_MATCHES_FOR_FORM)
     with_value = sum(1 for p in players if p.market_value)
     with_movement = sum(1 for p in players if p.metrics.movement is not None)
+    keepers = [p for p in players if p.position in GOALKEEPER_NAMES]
+    with_goalkeeping = sum(1 for p in keepers if p.metrics.goalkeeping is not None)
 
     club = payload.club
     squad_size = len(club.squad) if club else 0
@@ -200,6 +250,16 @@ def describe_capabilities(payload: IngestPayload) -> Dict[str, Any]:
             "enabled": with_movement > 0,
             "requires": "tracking data, which most event feeds do not carry",
             "covers": with_movement,
+        },
+        # Reported whenever the file contains a goalkeeper, so a client who
+        # uploads a full squad is told at load time that part of it cannot be
+        # rated - rather than finding an empty section in a report later.
+        "goalkeeper_rating": {
+            "enabled": bool(keepers) and with_goalkeeping == len(keepers),
+            "requires": "saves, shots on target faced and goals prevented; "
+                        "every other metric here describes outfield play",
+            "covers": with_goalkeeping,
+            "goalkeepers_in_file": len(keepers),
         },
         "observed_valuation": {
             "enabled": with_value > 0,

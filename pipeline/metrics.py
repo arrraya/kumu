@@ -201,10 +201,18 @@ def build_player_metrics(events: pd.DataFrame, model) -> dict:
                 "progressive_passes": m_progressive,
                 "pass_completion": round(float(completion), 3),
             }
-            entry["rating"] = round(float(match_rating(entry, rating_group(position))), 2)
+            # None for a role this appearance cannot support - a goalkeeper
+            # with no goalkeeping in the events. Left unrated rather than
+            # scored on a formula built for somebody else.
+            rating = match_rating(entry, rating_group(position))
+            if rating is not None:
+                entry["rating"] = round(float(rating), 2)
             history.append(entry)
 
-        ratings = [h["rating"] for h in history]
+        # Only the appearances that got one. An unrated match is not a
+        # rating of zero, and `scoring.raw_index` counts the same way.
+        ratings = [h["rating"] for h in history
+                   if isinstance(h.get("rating"), (int, float))]
         if len(ratings) >= 3:
             x = np.arange(len(ratings))
             trend = float(np.polyfit(x, ratings, 1)[0])

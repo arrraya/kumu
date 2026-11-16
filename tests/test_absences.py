@@ -190,6 +190,119 @@ class ASuppliedFeeIsEnoughOnItsOwn(unittest.TestCase):
         self.assertIsNone(risk["score"])
 
 
+GOALKEEPING = {
+    "saves_per_90": 3.1,
+    "save_percentage": 0.74,
+    "goals_prevented_per_90": 0.35,
+    "claims_per_90": 2.0,
+    "sweeper_actions_per_90": 1.4,
+}
+
+
+def keeper(**overrides):
+    """A goalkeeper from a source with no goalkeeping in it."""
+    base = player(position="GK", performance_index=None)
+    base["performance_history"] = [
+        {"match_id": str(i), "date": f"2025-01-0{i+1}", "minutes": 90.0,
+         "pass_completion": 0.86, "progressive_passes": 3,
+         "goals": 0, "assists": 0, "key_passes": 0, "shots": 0, "tackles": 0}
+        for i in range(5)
+    ]
+    base.update(overrides)
+    return base
+
+
+class AGoalkeeperIsNotRecommended(unittest.TestCase):
+    """The verdict that was being issued over a pass-completion score."""
+
+    def setUp(self):
+        self.g = ScoutingReportGenerator()
+        self.report = self.g.generate_full_report(keeper(), CLUB)
+
+    def test_no_recommendation_is_issued(self):
+        summary = self.report["executive_summary"]
+        self.assertIsNone(summary["recommendation"],
+                          "RECOMMENDED came from a placeholder match score of "
+                          "75 on a player nobody could rate")
+        self.assertIsNone(summary["action"])
+
+    def test_the_placeholder_match_score_does_not_reach_the_page(self):
+        self.assertIsNone(self.report["executive_summary"]["match_score"])
+
+    def test_no_percentile_is_reported(self):
+        summary = self.report["executive_summary"]
+        self.assertIsNone(summary["overall_percentile"],
+                          "a percentile of 50 means 'no idea', printed as a "
+                          "number")
+        self.assertIsNone(summary["metric_percentile_average"])
+
+    def test_the_reason_names_what_is_missing(self):
+        basis = self.report["executive_summary"]["percentile_basis"] or ""
+        for field in ("saves", "save percentage", "goals prevented"):
+            self.assertIn(field, basis.lower(),
+                          "the reader has to be told which fields unlock this")
+
+    def test_the_statement_does_not_recommend(self):
+        statement = self.report["executive_summary"]["executive_statement"]
+        self.assertNotIn("recommended", statement.lower())
+
+    def test_nothing_downstream_prices_him(self):
+        self.assertIsNone(self.report["market_analysis"]["current_market_value"])
+        self.assertIsNone(
+            self.report["negotiation_strategy"]["negotiation_position"])
+
+
+class AGoalkeeperWithGoalkeepingIsAssessed(unittest.TestCase):
+    """The absence is in the data, not in the position."""
+
+    def setUp(self):
+        self.g = ScoutingReportGenerator()
+        rated = keeper(performance_index=dict(WITH_INDEX))
+        rated["metrics"] = dict(rated["metrics"], goalkeeping=dict(GOALKEEPING))
+        self.report = self.g.generate_full_report(rated, CLUB)
+
+    def test_a_recommendation_is_issued_again(self):
+        self.assertIsNotNone(self.report["executive_summary"]["recommendation"])
+
+    def test_the_financial_sections_work(self):
+        self.assertIsNotNone(
+            self.report["market_analysis"]["current_market_value"])
+
+
+class TheGoalkeepingBasis(unittest.TestCase):
+    def setUp(self):
+        self.g = ScoutingReportGenerator()
+
+    def test_an_outfield_player_gets_no_goalkeeping_note(self):
+        self.assertIsNone(self.g.goalkeeping_basis(player()),
+                          "there is nothing to explain about a midfielder")
+
+    def test_a_keeper_without_the_fields_gets_one(self):
+        self.assertIsNotNone(self.g.goalkeeping_basis(keeper()))
+
+    def test_a_keeper_with_the_fields_does_not(self):
+        k = keeper()
+        k["metrics"] = dict(k["metrics"], goalkeeping=dict(GOALKEEPING))
+        self.assertIsNone(self.g.goalkeeping_basis(k))
+
+    def test_a_partial_set_is_not_enough(self):
+        for missing in ("saves_per_90", "save_percentage",
+                        "goals_prevented_per_90"):
+            partial = {k: v for k, v in GOALKEEPING.items() if k != missing}
+            k = keeper()
+            k["metrics"] = dict(k["metrics"], goalkeeping=partial)
+            self.assertIsNotNone(self.g.goalkeeping_basis(k),
+                                 f"{missing} is missing, so he is not rateable")
+
+    def test_a_keeper_who_faced_nothing_still_counts_as_rateable(self):
+        """A genuine zero is a figure; the test is presence, not size."""
+        k = keeper()
+        k["metrics"] = dict(k["metrics"], goalkeeping={
+            "saves_per_90": 0.0, "save_percentage": 0.0,
+            "goals_prevented_per_90": 0.0})
+        self.assertIsNone(self.g.goalkeeping_basis(k))
+
+
 class TheAccessor(unittest.TestCase):
     def setUp(self):
         self.g = ScoutingReportGenerator()

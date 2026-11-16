@@ -34,10 +34,38 @@ sys.path.insert(0, os.path.join(
 
 from pydantic import ValidationError  # noqa: E402
 
-from app.core.scoring import POSITIONS, match_rating, rate_history  # noqa: E402
+from app.core.scoring import (  # noqa: E402
+    POSITIONS, match_rating, rate_history, raw_index,
+)
 from app.schemas.ingest import MAX_RATING, MatchRecord, PlayerRecord  # noqa: E402
 
+# "goalkeeper" is deliberately absent: its formula returns None on an
+# appearance with no goalkeeping in it, so it has no ceiling to search for
+# and is covered by its own tests below.
 GROUPS = ("attack", "midfield", "defense")
+OUTFIELD = [p for p in POSITIONS if p != "GK"]
+
+
+def steep_history():
+    """Five appearances climbing to a seven-goal match, no goalkeeping."""
+    return [
+        dict(match_id=str(i), goals=g, assists=2, key_passes=5, shots=9,
+             pass_completion=0.9, progressive_passes=14, tackles=6,
+             interceptions=5)
+        for i, g in enumerate((0, 1, 3, 5, 7))
+    ]
+
+
+def keeper_history():
+    """The same span of afternoons, for a goalkeeper."""
+    return [
+        dict(match_id=str(i), saves=s, shots_on_target_faced=f,
+             goals_prevented=p, claims=2, sweeper_actions=1,
+             pass_completion=0.75)
+        for i, (s, f, p) in enumerate(
+            [(1, 4, -1.4), (2, 2, 0.4), (4, 6, 1.1), (7, 9, 1.8), (5, 5, 2.6)]
+        )
+    ]
 
 # The edges of each counting stat, past anything a professional match has
 # produced: seven goals, twenty-two progressive passes, twelve tackles.
@@ -123,24 +151,38 @@ class TheContractAcceptsWhatKumuWrites(unittest.TestCase):
 
     def test_a_rated_history_can_be_re_ingested(self):
         """The round trip in full, as a client re-uploading would do it."""
-        steep = sorted(({"goals": g, "assists": 2, "key_passes": 5,
-                         "shots": 9, "pass_completion": 0.9,
-                         "progressive_passes": 14, "tackles": 6,
-                         "interceptions": 5} for g in (0, 1, 3, 5, 7)),
-                       key=lambda s: s["goals"])
-        for position in POSITIONS:
-            history = [dict(match_id=str(i), **stats)
-                       for i, stats in enumerate(steep)]
-            rated = rate_history(history, position)
-            self.assertTrue(any(h["rating"] > 10 for h in rated),
+        for position in OUTFIELD:
+            rated = rate_history(steep_history(), position)
+            self.assertTrue(any(h.get("rating", 0) > 10 for h in rated),
                             "this fixture must contain the case that broke, "
                             "or it is not testing anything")
-            try:
-                PlayerRecord(external_id="x", name="X", position=position,
-                             performance_history=rated)
-            except ValidationError as error:
-                self.fail(f"a {position} history Kumu rated cannot be "
-                          f"re-ingested: {error.errors()[0]['msg']}")
+            self.assertReIngests(position, rated)
+
+    def test_a_goalkeeper_with_goalkeeping_is_rated_and_re_ingested(self):
+        rated = rate_history(keeper_history(), "GK")
+        self.assertTrue(all("rating" in h for h in rated),
+                        "goalkeeping was supplied, so every appearance rates")
+        self.assertReIngests("GK", rated)
+
+    def test_a_goalkeeper_without_goalkeeping_is_left_unrated(self):
+        """Not rated as a defender, and not rated as nought."""
+        rated = rate_history(steep_history(), "GK")
+        self.assertTrue(all("rating" not in h for h in rated),
+                        "an outfield line says nothing about goalkeeping, so "
+                        "it must not produce a goalkeeper's rating")
+        self.assertReIngests("GK", rated)
+        self.assertIsNone(
+            raw_index(rated),
+            "no rated appearance is no index, by the same route as a player "
+            "with two matches")
+
+    def assertReIngests(self, position, history):
+        try:
+            PlayerRecord(external_id="x", name="X", position=position,
+                         performance_history=history)
+        except ValidationError as error:
+            self.fail(f"a {position} history Kumu produced cannot be "
+                      f"re-ingested: {error.errors()[0]['msg']}")
 
     def test_the_ceiling_has_headroom_over_the_hardest_line(self):
         hardest = hardest_rating()
@@ -204,6 +246,68 @@ class RatingsKumuDidNotWrite(unittest.TestCase):
     def test_a_non_numeric_rating_is_replaced_rather_than_trusted(self):
         history = [{"match_id": "1", "rating": "muy bueno", "goals": 1}]
         self.assertIsInstance(rate_history(history, "ST")[0]["rating"], float)
+
+
+class TheGoalkeeperFormula(unittest.TestCase):
+    """It declines rather than falling back to somebody else's formula."""
+
+    def keeper(self, **overrides):
+        stats = dict(saves=3, shots_on_target_faced=4, goals_prevented=0.5,
+                     claims=2, sweeper_actions=1, pass_completion=0.75)
+        stats.update(overrides)
+        return stats
+
+    def test_an_outfield_line_produces_no_goalkeeper_rating(self):
+        outfield = dict(goals=1, assists=1, key_passes=3, shots=4,
+                        pass_completion=0.9, progressive_passes=8, tackles=4)
+        self.assertIsNone(match_rating(outfield, "goalkeeper"))
+
+    def test_every_required_field_is_required(self):
+        for missing in ("saves", "shots_on_target_faced", "goals_prevented"):
+            stats = self.keeper()
+            del stats[missing]
+            self.assertIsNone(match_rating(stats, "goalkeeper"),
+                              f"{missing} is missing, so there is no rating")
+
+    def test_a_keeper_who_faced_nothing_is_still_rated(self):
+        """A genuine zero is a figure. Absence is not."""
+        quiet = self.keeper(saves=0, shots_on_target_faced=0,
+                            goals_prevented=0.0)
+        self.assertIsInstance(match_rating(quiet, "goalkeeper"), float)
+
+    def test_goals_prevented_moves_the_rating_most(self):
+        base = match_rating(self.keeper(goals_prevented=0.0), "goalkeeper")
+        good = match_rating(self.keeper(goals_prevented=2.0), "goalkeeper")
+        more_claims = match_rating(
+            self.keeper(goals_prevented=0.0, claims=12), "goalkeeper")
+        self.assertGreater(good - base, more_claims - base,
+                           "stopping shots has to outweigh catching crosses")
+
+    def test_a_bad_afternoon_rates_below_the_base(self):
+        bad = self.keeper(saves=1, shots_on_target_faced=5,
+                          goals_prevented=-2.0)
+        self.assertLess(match_rating(bad, "goalkeeper"), 5.0,
+                        "letting in more than the shots deserved is worse "
+                        "than a blank afternoon")
+
+    def test_the_rating_separates_keepers(self):
+        """The fault being fixed: 5.1 points of spread across a whole set."""
+        ratings = [
+            match_rating(self.keeper(saves=s, shots_on_target_faced=f,
+                                     goals_prevented=p), "goalkeeper")
+            for s, f, p in [(1, 5, -2.0), (2, 3, 0.0), (4, 5, 0.9),
+                            (7, 9, 1.8), (5, 5, 2.6)]
+        ]
+        self.assertGreater(max(ratings) - min(ratings), 5.0,
+                           "a formula that cannot tell keepers apart is not "
+                           "measuring goalkeeping")
+
+    def test_a_goalkeeper_rating_also_fits_through_the_door(self):
+        extreme = self.keeper(saves=12, shots_on_target_faced=14,
+                              goals_prevented=5.0, claims=8,
+                              sweeper_actions=6, pass_completion=1.0)
+        self.assertTrue(accepted(round(match_rating(extreme, "goalkeeper"), 2)),
+                        "the ceiling has to hold for this formula too")
 
 
 if __name__ == "__main__":
