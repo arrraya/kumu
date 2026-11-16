@@ -178,11 +178,15 @@ def write(payloads, org_id, slug, create_name, i_mean_it: bool) -> int:
         if result.get("positions_without_reference"):
             print("      sin poblacion de referencia: "
                   f"{result['positions_without_reference']}")
-        rescaled = result.get("rescaled") or {}
-        if rescaled.get("reindexed"):
+        rescaled = result.get("rescaled")
+        if rescaled is None:
+            # Silence here would mean the pass never ran, which looks
+            # exactly like the pass running and finding nothing to do.
+            print("      SIN REESCALADO: ingest no lo devolvio")
+        else:
             moved = rescaled.get("largest_move") or {}
-            print(f"      reescalados {rescaled['reindexed']} de "
-                  f"{rescaled.get('of')} contra la poblacion ya cargada"
+            print(f"      reescalados {rescaled.get('reindexed')} de "
+                  f"{rescaled.get('of')}"
                   + (f"; mayor movimiento {moved}" if moved else ""))
     db.close()
     return written
