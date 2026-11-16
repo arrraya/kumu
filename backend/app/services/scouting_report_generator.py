@@ -1228,7 +1228,7 @@ class ScoutingReportGenerator:
     # What a feed has to carry before an athletic score means anything.
     MOVEMENT_INPUTS = ("average_speed", "distance_covered_per_90", "high_intensity_runs")
 
-    def _movement(self, player_data: Dict) -> Optional[Dict]:
+    def _movement(self, player_data: Dict) -> Dict:
         """The movement inputs, or None when the source does not carry them.
 
         An event feed records what happened to the ball, not how far a player
@@ -1240,12 +1240,22 @@ class ScoutingReportGenerator:
         A genuine zero passes: the test is whether the number is there, not
         whether it is large. When a provider API starts carrying these three
         fields, every score below starts working with no further change.
+
+        Returns whichever of the three are present, and {} when none are.
+        It used to be all or nothing, which was right while a source either
+        had tracking or did not. Pose turns out to support the two rates -
+        speed and distance are measured over the time a player was actually
+        seen - and not the run count, which is a tally of bursts in the
+        frames nearest the ball and inflates when scaled up from a partial
+        window. Demanding all three threw away two sound figures to avoid
+        one unsound one.
         """
         movement = (player_data.get("metrics") or {}).get("movement") or {}
-        values = {k: movement.get(k) for k in self.MOVEMENT_INPUTS}
-        if all(isinstance(v, (int, float)) for v in values.values()):
-            return values
-        return None
+        return {
+            key: movement[key] for key in self.MOVEMENT_INPUTS
+            if isinstance(movement.get(key), (int, float))
+            and not isinstance(movement.get(key), bool)
+        }
 
     # What an appearance has to carry before a goalkeeper can be rated.
     # Declared here as well as in `scoring` so the report can say what is
@@ -1299,26 +1309,47 @@ class ScoutingReportGenerator:
         group = self.PHYSICAL_GROUP.get(player_data.get("position"), "midfield")
         ref = self.PHYSICAL_REFERENCE[group]
 
+        # Each score where its own figure exists. All-or-nothing was right
+        # while a source either had tracking or did not; pose carries the
+        # two rates and not the run count, and refusing the lot to avoid
+        # the one would have thrown away the two that are sound.
+        SCORED_AGAINST = {
+            "speed": ("average_speed", "speed_kmh"),
+            "endurance": ("distance_covered_per_90", "distance_km"),
+            "intensity": ("high_intensity_runs", "runs"),
+        }
         movement = self._movement(player_data)
-        if movement is None:
-            athletic_scores: Dict[str, Dict[str, Any]] = {}
+        athletic_scores: Dict[str, Dict[str, Any]] = {}
+        for label, (field, reference) in SCORED_AGAINST.items():
+            if field not in movement:
+                continue
+            score = min((movement[field] / ref[reference]) * 100, 100)
+            athletic_scores[label] = {
+                "score": score,
+                "rating": self._rate_physical_attribute(score),
+            }
+
+        missing = [label for label in SCORED_AGAINST
+                   if label not in athletic_scores]
+        if not athletic_scores:
             athletic_basis = (
                 "No athletic profile: this source carries no tracking data "
                 "(distance, sprints, speed). Supply it and these scores appear."
             )
         else:
-            speed_score = min((movement["average_speed"] / ref["speed_kmh"]) * 100, 100)
-            endurance_score = min((movement["distance_covered_per_90"] / ref["distance_km"]) * 100, 100)
-            intensity_score = min((movement["high_intensity_runs"] / ref["runs"]) * 100, 100)
-            athletic_scores = {
-                "speed": {"score": speed_score, "rating": self._rate_physical_attribute(speed_score)},
-                "endurance": {"score": endurance_score, "rating": self._rate_physical_attribute(endurance_score)},
-                "intensity": {"score": intensity_score, "rating": self._rate_physical_attribute(intensity_score)},
-            }
+            mean = int(sum(a["score"] for a in athletic_scores.values())
+                       / len(athletic_scores))
             athletic_basis = (
-                f"Scored against {group} reference values, not against other players. "
-                f"Mean {int((speed_score + endurance_score + intensity_score) / 3)}/100."
+                f"Scored against {group} reference values, not against other "
+                f"players. Mean {mean}/100 over {len(athletic_scores)} of "
+                f"{len(SCORED_AGAINST)}."
             )
+            if missing:
+                athletic_basis += (
+                    " No " + ", ".join(missing) + ": this source does not "
+                    "carry " + ", ".join(SCORED_AGAINST[m][0] for m in missing)
+                    + "."
+                )
 
         # The report states elsewhere that age is not carried and that no
         # age-dependent judgement is made. This block used to call _age(),
@@ -1395,7 +1426,9 @@ class ScoutingReportGenerator:
         has_age = self._has_age(player_data)
         injury_history = player_data.get("injury_history") or []
         movement = self._movement(player_data)
-        workload = movement["distance_covered_per_90"] if movement else None
+        # .get, not [...]: `_movement` returns whichever figures exist, and
+        # a source may carry the run count without the distance.
+        workload = movement.get("distance_covered_per_90") if movement else None
 
         if not has_age and not injury_history and workload is None:
             return {

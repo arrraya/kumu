@@ -73,6 +73,26 @@ SMOOTH_WINDOW_FRAMES = 15
 # Below this much observed time, no per-90 figure is produced at all.
 MIN_OBSERVED_SECONDS = 60.0
 
+# A count of discrete events needs almost the whole match before it can be
+# scaled to one.
+#
+# Average speed and distance survive partial observation because they are
+# rates over the time actually seen. A count of threshold crossings does
+# not: the frames a player IS observed in are the ones near the ball, which
+# are also the ones he is sprinting in, so the rate inside the window is
+# already enriched before 1/coverage multiplies it. Measured across the 32
+# players of the published match, runs per 90 correlate with coverage at
+# r = -0.35 while speed and distance sit at +0.09 - the fewer frames, the
+# higher the count. The three best observed produced a median of 50 runs
+# against 83 for the other 29, and Kumu's own midfield reference is 35.
+#
+# At 85% coverage the extrapolation multiplies by at most 1.18, so even a
+# badly wrong assumption about the unseen frames moves the figure by less
+# than a fifth. Below that the correction is larger than the thing being
+# corrected. No open pose match reaches it, so this source reports no run
+# count at all - which is the finding, not a failure.
+MIN_COVERAGE_FOR_RUN_COUNT = 0.85
+
 # High-speed running threshold. 19.8 km/h is the convention most widely
 # used in football physical reporting; it is a declared line, not a
 # property of the player.
@@ -278,28 +298,64 @@ def summarise_movement(
     per_90 = (90.0 * 60.0) / observed_seconds
     distance_km = mean_speed * (observed_seconds / 3600.0)
 
+    observed_fraction = coverage.get("match_coverage") or 0.0
     movement = {
         "average_speed": round(mean_speed, 2),
         "distance_covered_per_90": round(distance_km * per_90, 2),
-        "high_intensity_runs": int(round(runs * per_90)),
+        # Absent, not zero, when the window cannot carry the extrapolation.
+        "high_intensity_runs": (
+            int(round(runs * per_90))
+            if observed_fraction >= MIN_COVERAGE_FOR_RUN_COUNT else None
+        ),
     }
+    # Not inside `movement`: that dict has to match MovementMetrics exactly,
+    # and an extra key would be written straight into players.metrics by the
+    # pose loader, which updates the column with raw SQL.
+    coverage["high_intensity_runs_observed"] = runs
 
     basis = (
         "Measured over %.1f s of observed play (%.0f%% of the window), smoothed "
         "with a %d-frame window before differentiation; the pose error alone "
-        "accounts for about %.1f km/h. Distance and runs are the observed rates "
-        "scaled to 90 minutes, not a full-match measurement. The camera follows "
-        "the ball, so a player is observed more while involved, which biases "
-        "every figure here upward by an amount this source cannot quantify."
+        "accounts for about %.1f km/h. Distance is the observed rate scaled to "
+        "90 minutes, not a full-match measurement. The camera follows the ball, "
+        "so a player is observed more while involved. %s"
         % (
             observed_seconds,
             100.0 * coverage["window_coverage"],
             smoothing_or(smooth_window_frames),
             floor,
+            _run_count_basis(observed_fraction, runs),
         )
     )
 
     return {"movement": movement, "coverage": coverage, "basis": basis}
+
+
+def _run_count_basis(observed_fraction: float, runs: int) -> str:
+    """What became of the run count, and why.
+
+    The earlier wording said the camera bias lifted "every figure here by
+    an amount this source cannot quantify". It can be quantified, and when
+    it was, it turned out not to touch every figure: speed and distance are
+    rates over observed time and come out independent of coverage, while
+    the run count - a tally of threshold crossings in the frames nearest
+    the ball - does not.
+    """
+    if observed_fraction >= MIN_COVERAGE_FOR_RUN_COUNT:
+        return (
+            "At %.0f%% coverage the run count is scaled to 90 minutes; speed "
+            "and distance are rates over the observed time and carry no such "
+            "correction." % (100.0 * observed_fraction)
+        )
+    return (
+        "No high-intensity run count: %d runs were seen in %.0f%% of the "
+        "match, and scaling a tally of bursts up from there multiplies a "
+        "window already weighted toward the ball. Speed and distance are "
+        "rates over observed time and are reported; across the published "
+        "match they come out independent of coverage (r = +0.09) where the "
+        "run count does not (r = -0.35)."
+        % (runs, 100.0 * observed_fraction)
+    )
 
 
 def smoothing_or(window: int) -> int:
