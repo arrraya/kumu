@@ -1,0 +1,12 @@
+# Only for the tests. Nothing here is imported by the application, and
+# backend/requirements.txt is what Railway installs to serve it - a test
+# dependency in there is a dependency the server downloads at boot and
+# never uses. It also broke a deployment, because the version I wrote
+# down did not exist.
+#
+#     pip install -r requirements-dev.txt
+#
+# tests/test_sql.py parses every query with libpg_query, the parser
+# PostgreSQL itself uses, and skips rather than passes when this is
+# missing: a check that silently does nothing is worse than no check.
+pglast>=7
