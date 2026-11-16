@@ -12,6 +12,7 @@ numbers comparable to another's, and it is what makes the shared reference set
 an asset rather than a demo.
 """
 import hashlib
+import json
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -83,6 +84,63 @@ def _apply_scale(raw: float, scale: Optional[Tuple[float, float]]) -> Dict[str, 
     }
 
 
+def renormalise(db: Session, org_id: int, org_ids: List[int]) -> Dict[str, Any]:
+    """Put every index in a tenant back on the scale of the final population.
+
+    An index has two halves. `raw_value` comes from a player's own match
+    log and is his alone: load him first or last, it does not move.
+    `value` is that figure placed against his positional peers, and the
+    peers are whoever is in the database at the moment he is written.
+
+    `ingest` is called once per club, and `reference_scales` was read
+    afresh each time, over the tenant's own rows as well as the reference
+    population. So the first club of a load was scaled against an empty
+    tenant and the eighth against the seven before it, and loading the
+    same file twice gave different numbers - 101 A-League players came
+    back with centre-backs spanning 44.2 to 73.4 one day and 45.7 to 75.7
+    the next, from an identical file. A player's index is supposed to be
+    a property of the player and his peers, not of the order the loader
+    happened to visit the clubs in.
+
+    Running this at the end of every ingest makes the final state a pure
+    function of the final population. It is idempotent because
+    `reference_scales` reads `raw_value`, never `value`: normalising
+    already-normalised numbers would compress the scale a second time,
+    and the query was written to avoid exactly that.
+    """
+    scales = reference_scales(db, org_ids)
+    rows = db.execute(text("""
+        SELECT id, position, performance_index
+        FROM players
+        WHERE organization_id = :org_id
+          AND (performance_index->>'raw_value') IS NOT NULL
+    """), {"org_id": org_id}).fetchall()
+
+    changed, moved = 0, {}
+    for player_id, position, index in rows:
+        if not isinstance(index, dict):
+            continue
+        fresh = _apply_scale(float(index["raw_value"]), scales.get(position))
+        if all(index.get(k) == v for k, v in fresh.items()):
+            continue
+        before = index.get("value")
+        db.execute(text("""
+            UPDATE players SET performance_index = CAST(:index AS JSON)
+            WHERE id = :id
+        """), {"index": json.dumps({**index, **fresh}), "id": player_id})
+        changed += 1
+        if position and before is not None:
+            shift = abs(float(fresh["value"]) - float(before))
+            moved[position] = max(moved.get(position, 0.0), shift)
+
+    db.commit()
+    return {
+        "reindexed": changed,
+        "of": len(rows),
+        "largest_move": {k: round(v, 1) for k, v in sorted(moved.items())},
+    }
+
+
 def prepare_player(record: PlayerRecord, scales: Dict[str, Tuple[float, float]],
                    source: str, org_id: int) -> Optional[Dict[str, Any]]:
     """Derive everything Kumu computes for itself from what the client supplied."""
@@ -128,7 +186,6 @@ def prepare_player(record: PlayerRecord, scales: Dict[str, Tuple[float, float]],
 def ingest(db: Session, payload: IngestPayload, org_id: int,
            org_ids: List[int]) -> Dict[str, Any]:
     """Write a payload into the caller's tenant and report what landed."""
-    import json
 
     scales = reference_scales(db, org_ids)
     prepared, skipped = [], []
@@ -179,12 +236,17 @@ def ingest(db: Session, payload: IngestPayload, org_id: int,
 
     db.commit()
 
+    # After the rows land, not before: a player written in this payload is
+    # part of the population the whole tenant is measured against.
+    rescaled = renormalise(db, org_id, org_ids)
+
     unscaled = [p["name"] for p in prepared
                 if p["performance_index"] and not p["performance_index"].get("scaled")]
 
     return {
         "players_written": len(prepared),
         "players_skipped": skipped,
+        "rescaled": rescaled,
         "club": club_result,
         "positions_without_reference": sorted({
             p["position"] for p in prepared
@@ -196,8 +258,6 @@ def ingest(db: Session, payload: IngestPayload, org_id: int,
 
 def _ingest_club(db: Session, payload: IngestPayload, org_id: int) -> Dict[str, Any]:
     """Create or update the buying club and its squad."""
-    import json
-
     club = payload.club
     external_id = stable_external_id(payload.source, org_id, club.external_id)
 

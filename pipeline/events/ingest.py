@@ -178,6 +178,12 @@ def write(payloads, org_id, slug, create_name, i_mean_it: bool) -> int:
         if result.get("positions_without_reference"):
             print("      sin poblacion de referencia: "
                   f"{result['positions_without_reference']}")
+        rescaled = result.get("rescaled") or {}
+        if rescaled.get("reindexed"):
+            moved = rescaled.get("largest_move") or {}
+            print(f"      reescalados {rescaled['reindexed']} de "
+                  f"{rescaled.get('of')} contra la poblacion ya cargada"
+                  + (f"; mayor movimiento {moved}" if moved else ""))
     db.close()
     return written
 
