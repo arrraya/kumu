@@ -269,7 +269,13 @@ def _analyze_historical_trend(ratings: List[float]) -> Dict[str, Any]:
 
 
 def _analyze_recent_form(ratings: List[float]) -> Dict[str, Any]:
-    """Form over the most recent matches, on the 0-10 rating scale."""
+    """Form over the most recent matches.
+
+    The bands read a rating the way the conventional 0-10 scale is read,
+    and they are open at the top on purpose: Kumu's own rating is uncapped,
+    so a hat-trick lands above 10 and falls into "excellent", which is
+    where it belongs. Nothing here assumes a ceiling.
+    """
     if not ratings:
         return {"form": "unknown", "games_analyzed": 0}
 

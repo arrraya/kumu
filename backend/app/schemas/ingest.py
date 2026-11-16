@@ -23,6 +23,10 @@ CONTRACT_VERSION = "1.0"
 
 POSITIONS = {"GK", "CB", "RB", "LB", "CDM", "CM", "CAM", "RW", "LW", "ST"}
 
+# The highest rating the contract will accept. See MatchRecord for why it
+# is 30 rather than 10, and why it is a sanity bound rather than a scale.
+MAX_RATING = 30.0
+
 
 class PassingMetrics(BaseModel):
     completion_rate: Optional[float] = Field(None, ge=0, le=1)
@@ -63,12 +67,37 @@ class PlayerMetrics(BaseModel):
 
 class MatchRecord(BaseModel):
     """One appearance. `rating` may be supplied by clients who already have
-    their own; when absent Kumu computes it from the counting stats, role-aware."""
+    their own; when absent Kumu computes it from the counting stats, role-aware.
+
+    One field, two sources, and the ceiling has to admit both. A client's
+    own rating sits on the conventional 0-10; Kumu's is uncapped by design,
+    because clamping would stack every outlier on the ceiling and leave a
+    hat-trick indistinguishable from a one-goal game - the same reasoning
+    that made `normalize_indices` compress its tails with tanh rather than
+    clip them. `le=10` admitted only the first of the two, so Kumu wrote
+    ratings its own contract refused to read back: of 101 A-League players
+    loaded, four had a match above 10 and their history could not be
+    re-ingested.
+
+    30 is not a scale, it is a sanity bound, and it is set from what the
+    three role formulas can actually reach rather than from the one that
+    came to mind first. Searched over a grid of extremes, attack tops out
+    at 24.6 and midfield and defense at 28.0 - the two that also reward
+    progressive passing and defensive work, so they climb highest. A match
+    anyone will really play lands near 15. The bound clears the formulas
+    and still refuses a client typing 85 for 8.5, which is the error it
+    exists to catch: ratings arrive on a 0-10 scale, so a misplaced
+    decimal point lands between 50 and 90.
+
+    tests/test_contract.py holds this to the formula rather than to the
+    number: it asserts that everything `match_rating` can produce fits
+    through this door, so raising one side without the other fails there.
+    """
 
     match_id: Union[str, int]
     date: Optional[str] = None
     minutes: Optional[float] = Field(None, ge=0)
-    rating: Optional[float] = Field(None, ge=0, le=10)
+    rating: Optional[float] = Field(None, ge=0, le=MAX_RATING)
     goals: Optional[float] = Field(None, ge=0)
     assists: Optional[float] = Field(None, ge=0)
     key_passes: Optional[float] = Field(None, ge=0)
