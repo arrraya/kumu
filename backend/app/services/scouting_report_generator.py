@@ -128,6 +128,18 @@ class ScoutingReportGenerator:
     def _has_age(self, player_data: Dict) -> bool:
         return isinstance(player_data.get("age"), (int, float))
 
+    def _has_budget(self, team_data: Dict) -> bool:
+        """Whether this club's means are known.
+
+        A club loaded from a match feed has no budget: the feed records
+        what happened on the pitch, not what the club can pay. Eight
+        A-League clubs arrived that way and every report against them
+        returned 500, because a wage was computed by dividing None by two
+        hundred million.
+        """
+        budget = team_data.get("budget")
+        return isinstance(budget, (int, float)) and budget > 0
+
     def _has_index(self, player_data: Dict) -> bool:
         """Whether this player has a performance index at all.
 
@@ -1894,6 +1906,16 @@ class ScoutingReportGenerator:
         base_wage = self._calculate_base_wage(player_data, team_data)
 
         return {
+            # Said here rather than left to be inferred from a number that
+            # looks like every other number: a wage not scaled to the club
+            # is a wage for a player, not an offer this club can make.
+            "basis": (
+                None if self._has_budget(team_data) else
+                f"Wages are not adjusted to {team_data.get('name') or 'this club'}: "
+                "the source it was loaded from records matches, not finances, "
+                "so Kumu has no budget for it. The figures below are what a "
+                "player of this value earns, not what this club can carry."
+            ),
             "contract_length": f"{base_length} years{f' + {option_years} optional' if option_years else ''}",
             "wage_structure": {
                 "base_weekly_wage": base_wage,
@@ -1917,13 +1939,18 @@ class ScoutingReportGenerator:
         }
 
     def _calculate_base_wage(self, player_data: Dict, team_data: Dict) -> float:
-        """Calculate recommended base wage"""
-        # Base on market value and team wage structure
+        """Calculate recommended base wage.
+
+        The wage follows the player's value; the budget only scales it to
+        what this club can carry. With no budget there is no scaling to
+        apply, so the figure is what a player of this value earns and the
+        section says it is unadjusted - rather than, as before, dividing
+        None by two hundred million.
+        """
         value_based_wage = self._market_value(player_data) * self.WEEKLY_WAGE_RATE
-
-        # Adjust for team budget
-        budget_factor = min(team_data["budget"] / 200000000, 1.5)  # Normalize to 200M budget
-
+        if not self._has_budget(team_data):
+            return value_based_wage
+        budget_factor = min(team_data["budget"] / 200000000, 1.5)
         return value_based_wage * budget_factor
 
     def _calculate_total_package(
@@ -2749,8 +2776,13 @@ class ScoutingReportGenerator:
         }
 
     def _recommend_payment_structure(self, total_fee: float, team_data: Dict) -> Dict:
-        """Recommend payment structure"""
-        if team_data["budget"] > total_fee * 2:
+        """Recommend payment structure.
+
+        Front-loading a fee is advice about cash, so it needs to know the
+        club has some. Without a budget it falls through to the balanced
+        structure below, which assumes nothing either way.
+        """
+        if self._has_budget(team_data) and team_data["budget"] > total_fee * 2:
             # Cash rich
             return {
                 "structure": "Front-loaded",
