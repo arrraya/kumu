@@ -140,7 +140,7 @@ def main() -> int:
             SELECT position, count(*) FROM players
             WHERE organization_id IN (SELECT id FROM organizations
                                       WHERE slug = 'public')
-              AND performance_index IS NOT NULL
+              AND (performance_index->>'value') IS NOT NULL
             GROUP BY position ORDER BY count(*)
         """)
         print(f"   {'pos':5s} {'pares en la poblacion publica':>30s}")

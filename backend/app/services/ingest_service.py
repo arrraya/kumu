@@ -50,7 +50,8 @@ def reference_scales(db: Session, org_ids: List[int]) -> Dict[str, Tuple[float, 
                    (performance_index->>'value')::float
                ) AS v
         FROM players
-        WHERE performance_index IS NOT NULL
+        WHERE COALESCE(performance_index->>'raw_value',
+                       performance_index->>'value') IS NOT NULL
           AND organization_id IN :org_ids
     """).bindparams(), {"org_ids": tuple(org_ids)}).fetchall()
 
@@ -160,7 +161,14 @@ def ingest(db: Session, payload: IngestPayload, org_id: int,
                 updated_at = NOW()
         """), {
             **row,
-            "performance_index": json.dumps(row["performance_index"]),
+            # SQL NULL, not the JSON value null. json.dumps(None) is the
+            # string "null", which CAST(... AS JSON) stores as a JSON null -
+            # a value, not an absence. It passes every
+            # `performance_index IS NOT NULL` filter in the codebase and
+            # then COALESCEs to 0, so a player Kumu declined to rate joined
+            # the percentile population as the worst in it.
+            "performance_index": (json.dumps(row["performance_index"])
+                                  if row["performance_index"] else None),
             "metrics": json.dumps(row["metrics"]),
             "performance_history": json.dumps(row["performance_history"]),
         })

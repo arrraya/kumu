@@ -342,9 +342,9 @@ class ScoutingReportGenerator:
 
         rows = self._query_db(
             """
-            SELECT COALESCE((performance_index->>'value')::float, 0) AS v
+            SELECT (performance_index->>'value')::float AS v
             FROM players
-            WHERE position = :position AND performance_index IS NOT NULL
+            WHERE position = :position AND (performance_index->>'value') IS NOT NULL
               AND organization_id IN :org_ids
             """,
             {"position": position},
@@ -1605,9 +1605,9 @@ class ScoutingReportGenerator:
             SELECT name, current_team, market_value, performance_index
             FROM players
             WHERE position = :position AND name <> :name
-              AND performance_index IS NOT NULL AND market_value IS NOT NULL
+              AND (performance_index->>'value') IS NOT NULL AND market_value IS NOT NULL
               AND organization_id IN :org_ids
-            ORDER BY ABS(COALESCE((performance_index->>'value')::float, 0) - :idx) ASC
+            ORDER BY ABS((performance_index->>'value')::float - :idx) ASC
             LIMIT 3
             """,
             {"position": position, "name": name, "idx": float(idx)},
@@ -2014,9 +2014,9 @@ class ScoutingReportGenerator:
                 WHERE m.team_id = :team_id AND p.position = :position
                   AND m.left_at IS NULL
                   AND m.left_at IS NULL
-                  AND p.name <> :name AND p.performance_index IS NOT NULL
+                  AND p.name <> :name AND p.(performance_index->>'value') IS NOT NULL
                   AND m.organization_id IN :org_ids
-                ORDER BY COALESCE((p.performance_index->>'value')::float, 0) DESC
+                ORDER BY (p.performance_index->>'value')::float DESC
                 LIMIT 5
                 """,
                 {"team_id": int(team_id), "position": position, "name": name},
@@ -2032,19 +2032,19 @@ class ScoutingReportGenerator:
                 """
                 WITH stats AS (
                     SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (
-                        ORDER BY COALESCE((performance_index->>'value')::float, 0)
+                        ORDER BY (performance_index->>'value')::float
                     ) AS median_index
                     FROM players
-                    WHERE position = :position AND performance_index IS NOT NULL
+                    WHERE position = :position AND (performance_index->>'value') IS NOT NULL
                       AND organization_id IN :org_ids
                 )
                 SELECT p.name, p.current_team, p.performance_index
                 FROM players p, stats
                 WHERE p.position = :position AND p.name <> :name
-                  AND p.performance_index IS NOT NULL
+                  AND p.(performance_index->>'value') IS NOT NULL
                   AND p.organization_id IN :org_ids
                 ORDER BY ABS(
-                    COALESCE((p.performance_index->>'value')::float, 0) - stats.median_index
+                    (p.performance_index->>'value')::float - stats.median_index
                 ) ASC
                 LIMIT 5
                 """,
@@ -2092,9 +2092,9 @@ class ScoutingReportGenerator:
 
         rows = self._query_db(
             """
-            SELECT COALESCE((performance_index->>'value')::float, 0) AS v
+            SELECT (performance_index->>'value')::float AS v
             FROM players
-            WHERE position = :position AND performance_index IS NOT NULL
+            WHERE position = :position AND (performance_index->>'value') IS NOT NULL
               AND organization_id IN :org_ids
             """,
             {"position": position},

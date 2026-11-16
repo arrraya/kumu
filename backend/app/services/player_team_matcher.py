@@ -237,10 +237,11 @@ class PlayerTeamMatcher:
 
             return scoped_query(
                 """
-                SELECT COALESCE((p.performance_index->>'value')::float, 0)
+                SELECT (p.performance_index->>'value')::float
                 FROM squad_memberships m
                 JOIN players p ON p.id = m.player_id
                 WHERE m.team_id = :team_id AND p.position = :position
+                  AND (p.performance_index->>'value') IS NOT NULL
                   AND m.left_at IS NULL
                   AND m.organization_id IN :org_ids
                 """,
