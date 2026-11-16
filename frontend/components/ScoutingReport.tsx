@@ -14,6 +14,7 @@ import {
 import { Player, Match } from '@/types';
 import { api } from '@/lib/api';
 import PitchMap from '@/components/PitchMap'
+import PoseClip from '@/components/PoseClip'
 
 interface ScoutingReportProps {
   player: Player | null;
@@ -634,6 +635,15 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
         <PitchMap
           profile={(player as any)?.spatial_profile ?? (player as any)?.spatialProfile}
           name={player?.name}
+        />
+
+        {/* Between the map and the reference scores on purpose: the map
+            says where he plays, this says how he moves, and the bars
+            below are the only part of the tab compared against anything.
+            Renders nothing at all for a player with no clip. */}
+        <PoseClip
+          externalId={player?.external_id}
+          playerName={player?.name}
         />
 
         <div className="bg-paper-card border border-rule rounded-sm p-6">

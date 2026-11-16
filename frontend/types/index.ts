@@ -31,6 +31,12 @@ export interface PerformanceIndex {
   
   export interface Player {
     id: string;
+    // The id the player carries in whatever source he came from, hashed
+    // with his tenant. The API returns it and `normalizePlayer` passes it
+    // through; anything joining a player to material held outside the
+    // database - his pose clip, for one - has to join on this rather than
+    // on a name two players can share.
+    external_id?: string | null;
     name: string;
     age: number;
     position: string;

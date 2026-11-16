@@ -44,7 +44,9 @@ import sys
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
+sys.path.insert(0, os.path.join(REPO, "backend"))
 
 from aggregate import speed_series  # noqa: E402
 from ingest import HIP, open_lines, read_hips  # noqa: E402
@@ -61,6 +63,21 @@ MANIFEST = "manifest.json"
 # mp4 by default: the same clip is 1.8 MB as a GIF and a fraction of that
 # as video, and seven of them ship to every browser that opens a report.
 DEFAULT_SUFFIX = ".mp4"
+
+
+def kumu_id(player_id, source, org_id):
+    """The external_id this player carries inside Kumu.
+
+    The manifest has to be joinable from the page, and the page gets
+    `external_id` from the API - not the provider's own id, which the
+    loader hashes away. Computed with the loader's own function rather
+    than a copy of its rule, so the two cannot drift apart.
+    """
+    if org_id is None:
+        return None
+    from app.services.ingest_service import stable_external_id
+
+    return stable_external_id(source, org_id, "sc_%d" % player_id)
 
 
 def read_names(sheet_path):
@@ -183,7 +200,7 @@ def to_clip(player_id, frames):
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--file", required=True, help="Pose match file")
+    parser.add_argument("--file", default=None, help="Pose match file")
     parser.add_argument("--player", type=int, action="append", default=None,
                         help="Only these players; default is all observed")
     parser.add_argument("--out", default="frontend/public/clips")
@@ -191,6 +208,19 @@ def main() -> int:
                         help="SkillCorner match .json, for the players' names")
     parser.add_argument("--suffix", default=DEFAULT_SUFFIX,
                         choices=[".mp4", ".gif"])
+    parser.add_argument("--org", type=int, default=None,
+                        help="Tenant these players were loaded into; without "
+                             "it the manifest cannot be joined from the page")
+    parser.add_argument("--source", default="skillcorner_open",
+                        help="The source name used when they were loaded")
+    parser.add_argument("--only", type=int, action="append", default=None,
+                        metavar="ID",
+                        help="Keep only these players in the manifest and "
+                             "delete the rest; the match has 32 and Kumu "
+                             "may hold a handful")
+    parser.add_argument("--from-cuts", default=None, metavar="DIR",
+                        help="Re-render from saved cuts instead of reading "
+                             "the match again")
     parser.add_argument("--keep-frames", default=None, metavar="DIR",
                         help="Also write each cut as .jsonl, to re-render "
                              "without reading the match again")
@@ -203,34 +233,65 @@ def main() -> int:
     if args.sheet and not names:
         print("[!] %s no dio ningun nombre" % args.sheet, file=sys.stderr)
 
-    print("[*] primera pasada: caderas", file=sys.stderr)
-    hips, n_frames, _detected, _periods = read_hips(args.file)
-    if args.player:
-        hips = {pid: hip for pid, hip in hips.items() if pid in set(args.player)}
-    print("[*] %d frames, %d jugadores" % (n_frames, len(hips)), file=sys.stderr)
+    keep = set(args.only) if args.only else None
 
-    windows, peaks = {}, {}
-    for pid, hip in hips.items():
-        found = best_window(hip, args.fps, seconds=args.seconds)
-        if found:
-            start, end, peak = found
-            windows[pid] = (start, end)
-            peaks[pid] = peak
-    print("[*] %d con una ventana completa de %.1fs"
-          % (len(windows), args.seconds), file=sys.stderr)
-    if not windows:
-        print("Ningun jugador tiene una ventana observada de punta a punta.")
-        return 0
+    if args.from_cuts:
+        # Everything the two passes would have produced is already on
+        # disk. Reading it back is how a margin gets adjusted, or a
+        # manifest rebuilt, without touching the 3.3 GB again.
+        frames, peaks = {}, {}
+        for name in sorted(os.listdir(args.from_cuts)):
+            if not name.endswith(".jsonl"):
+                continue
+            pid = int(name[:-len(".jsonl")])
+            if keep is not None and pid not in keep:
+                continue
+            if args.player and pid not in set(args.player):
+                continue
+            with open(os.path.join(args.from_cuts, name), encoding="utf-8") as f:
+                frames[pid] = [json.loads(line) for line in f if line.strip()]
+            peaks[pid] = 0.0
+        print("[*] %d recortes leidos de %s" % (len(frames), args.from_cuts),
+              file=sys.stderr)
+        windows = {pid: (0, len(f)) for pid, f in frames.items()}
+    else:
+        if not args.file:
+            raise SystemExit("--file o --from-cuts: uno de los dos.")
+        print("[*] primera pasada: caderas", file=sys.stderr)
+        hips, n_frames, _detected, _periods = read_hips(args.file)
+        if args.player:
+            hips = {pid: h for pid, h in hips.items() if pid in set(args.player)}
+        if keep is not None:
+            hips = {pid: h for pid, h in hips.items() if pid in keep}
+        print("[*] %d frames, %d jugadores" % (n_frames, len(hips)),
+              file=sys.stderr)
 
-    print("[*] segunda pasada: articulaciones", file=sys.stderr)
-    frames = extract(args.file, windows)
+        windows, peaks = {}, {}
+        for pid, hip in hips.items():
+            found = best_window(hip, args.fps, seconds=args.seconds)
+            if found:
+                start, end, peak = found
+                windows[pid] = (start, end)
+                peaks[pid] = peak
+        print("[*] %d con una ventana completa de %.1fs"
+              % (len(windows), args.seconds), file=sys.stderr)
+        if not windows:
+            print("Ningun jugador tiene una ventana observada de punta a punta.")
+            return 0
+
+        print("[*] segunda pasada: articulaciones", file=sys.stderr)
+        frames = extract(args.file, windows)
 
     os.makedirs(args.out, exist_ok=True)
     manifest_path = os.path.join(args.out, MANIFEST)
     manifest = {}
-    if os.path.exists(manifest_path):
+    if os.path.exists(manifest_path) and keep is None:
         with open(manifest_path, encoding="utf-8") as handle:
             manifest = json.load(handle)
+    previous = {}
+    if os.path.exists(manifest_path):
+        with open(manifest_path, encoding="utf-8") as handle:
+            previous = json.load(handle)
 
     print()
     for pid in sorted(windows, key=lambda p: -peaks[p]):
@@ -252,16 +313,35 @@ def main() -> int:
         renderer.render(clip, out_path, fps=args.fps, dpi=args.dpi,
                         name=names.get(pid))
         size = os.path.getsize(out_path)
+        was = previous.get(str(pid)) or {}
         manifest[str(pid)] = {
             "file": filename,
-            "name": names.get(pid),
+            "name": names.get(pid) or was.get("name"),
+            # What the page joins on. The API hands it `external_id`, not
+            # the provider's id, so without this the manifest and the
+            # player list have no key in common.
+            "external_id": kumu_id(pid, args.source, args.org),
             "frames": clip["n"],
             "seconds": round(clip["n"] / args.fps, 1),
-            "peak_kmh": round(peaks[pid], 1),
+            "peak_kmh": round(peaks[pid] or was.get("peak_kmh") or 0.0, 1),
         }
         print("  %7d  %-22s %5.1f km/h  %4d frames  %6.0f KB"
               % (pid, (names.get(pid) or "-")[:22], peaks[pid],
                  clip["n"], size / 1024))
+
+    if keep is not None:
+        # The match holds 32 players and Kumu may hold a handful. Clips
+        # nobody can open are repository weight for ever.
+        removed = 0
+        for name in os.listdir(args.out):
+            if name == MANIFEST:
+                continue
+            pid = name.rsplit(".", 1)[0]
+            if pid not in manifest:
+                os.unlink(os.path.join(args.out, name))
+                removed += 1
+        if removed:
+            print("\n  %d clips sin jugador en Kumu, borrados" % removed)
 
     with open(manifest_path, "w", encoding="utf-8") as handle:
         json.dump(manifest, handle, indent=1, sort_keys=True)
