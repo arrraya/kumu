@@ -100,13 +100,20 @@ class ScoutingReportGenerator:
             self._buyer_anchor(team_data).get("market", markets.DEFAULT_MARKET),
         )
 
+    # What `_market_value` falls back on when there is no index to price from.
+    # Named rather than written as a bare 50, because a literal in the middle
+    # of a formula reads like a measurement and this one is a stand-in.
+    ASSUMED_INDEX = 50
+
     def _market_value(self, player_data: Dict) -> float:
         """The fee to reason about. Estimated from the index when the client
         supplies none, and flagged as an estimate wherever it is shown."""
         value = player_data.get("market_value")
         if isinstance(value, (int, float)) and value > 0:
             return float(value)
-        index = (player_data.get("performance_index") or {}).get("value") or 50
+        # Only reached through a caller that checked `_can_price`; the sections
+        # that would publish this figure refuse to run without one.
+        index = (player_data.get("performance_index") or {}).get("value") or self.ASSUMED_INDEX
         anchor = self._seller_anchor(player_data)["value"]
         return round(float(index) / 100 * anchor * 0.5, 0)
 
@@ -120,6 +127,43 @@ class ScoutingReportGenerator:
 
     def _has_age(self, player_data: Dict) -> bool:
         return isinstance(player_data.get("age"), (int, float))
+
+    def _has_index(self, player_data: Dict) -> bool:
+        """Whether this player has a performance index at all.
+
+        `scoring.raw_index` returns None on purpose below three appearances -
+        two matches are no trend, and inventing one is the filled-in number
+        these reports exist to avoid. So absence here is a state the system
+        produces deliberately, and every consumer has to expect it.
+        """
+        index = (player_data.get("performance_index") or {}).get("value")
+        return isinstance(index, (int, float))
+
+    def _index_value(self, player_data: Dict, key: str):
+        """One field of the performance index, or None when there is none.
+
+        Five places subscripted `player_data["performance_index"][...]`
+        directly. Each took the whole report down with a TypeError on a
+        player the system had deliberately left without an index, and each
+        was found only by walking into it: fixing one revealed the next.
+        They go through here now so absence is a value to handle rather than
+        an exception to meet.
+        """
+        index = player_data.get("performance_index") or {}
+        value = index.get(key)
+        return value if isinstance(value, (int, float)) else None
+
+    def _can_price(self, player_data: Dict) -> bool:
+        """Whether a fee can be reasoned about at all.
+
+        Either the client supplied a price, or there is an index to derive one
+        from. With neither, `_market_value` falls back on ASSUMED_INDEX and
+        returns a figure built on nothing - and that figure goes on to set the
+        buyout clause, the wage and the opening offer. Same fault the age
+        substitution had: harmless in an accessor, a published judgement by the
+        time it reaches the page.
+        """
+        return self._has_market_value(player_data) or self._has_index(player_data)
 
     def _query_db(self, sql: str, params: dict, org_ids=None) -> list:
         """Run a read-only query restricted to the caller's tenants.
@@ -1360,9 +1404,19 @@ class ScoutingReportGenerator:
 
     def generate_market_analysis(self, player_data: Dict, team_data: Dict, org_ids=None) -> Dict:
         """Generate market value and financial analysis"""
+        if not self._can_price(player_data):
+            return self._no_market_analysis(player_data)
+
         current_value = self._market_value(player_data)
         age = self._age(player_data)
-        performance_index = player_data["performance_index"]["value"]
+        # Not player_data["performance_index"]["value"]: that subscripted a
+        # None whenever the index was absent and took the whole report down
+        # with a TypeError. `_can_price` has already established that either
+        # this exists or a client price does.
+        performance_index = (
+            (player_data.get("performance_index") or {}).get("value")
+            or self.ASSUMED_INDEX
+        )
 
         # Calculate value projections
         value_projections = self._project_market_value(current_value, age, performance_index)
@@ -1381,6 +1435,54 @@ class ScoutingReportGenerator:
             "roi_analysis": roi_analysis,
             "contract_recommendations": self._recommend_contract_structure(player_data, team_data),
             "financial_risk_assessment": self._assess_financial_risk(player_data, team_data),
+        }
+
+    def _no_market_analysis(self, player_data: Dict) -> Dict:
+        """The financial section when there is nothing to price from.
+
+        Every figure below rests on a fee, and the fee rests on either a
+        client's own price or an index. With neither, the honest output is the
+        shape of the section with its figures absent and a line saying why -
+        the same move the physical profile makes when a source carries no
+        tracking. The alternative is a buyout clause, a wage and an opening
+        offer all derived from a stand-in index of 50.
+        """
+        reason = (
+            "No financial analysis: this player has no market value and no "
+            "performance index to derive one from. An index needs three "
+            "appearances; supply a fee, or more matches, and this section "
+            "starts working."
+        )
+        return {
+            "current_market_value": None,
+            "value_assessment": None,
+            "value_projections": None,
+            "comparable_transfers": [],
+            "roi_analysis": None,
+            "contract_recommendations": None,
+            "financial_risk_assessment": None,
+            "basis": reason,
+        }
+
+    def _no_negotiation_strategy(self) -> Dict:
+        """Same reasoning, one section further on.
+
+        The opening offer is a fraction of the fee, so a negotiation built on
+        an absent fee is a number dressed as a position.
+        """
+        reason = (
+            "No negotiation strategy: it is built on a fee, and this player "
+            "has none that was supplied or could be derived."
+        )
+        return {
+            "negotiation_position": None,
+            "offer_strategy": None,
+            "key_negotiation_points": [],
+            "leverage_factors": [],
+            "timeline": None,
+            "tactics": None,
+            "contingency_plans": [],
+            "basis": reason,
         }
 
     def _project_market_value(
@@ -1565,7 +1667,8 @@ class ScoutingReportGenerator:
     def _estimate_sporting_value(self, player_data: Dict, team_data: Dict) -> float:
         """Estimate sporting value contribution"""
         # Simplified calculation based on performance impact
-        performance_index = player_data["performance_index"]["value"]
+        performance_index = (self._index_value(player_data, "value")
+                             or self.ASSUMED_INDEX)
         position_importance = {"ST": 1.2, "CAM": 1.1, "CM": 1.0, "CB": 0.9, "GK": 0.8}.get(
             player_data["position"], 1.0
         )
@@ -1642,8 +1745,12 @@ class ScoutingReportGenerator:
         if self._age(player_data) > 30:
             risk += 20
 
-        # Performance volatility
-        risk += player_data["performance_index"]["volatility"] * 100
+        # Performance volatility. Absent for a player with too few
+        # appearances to have a trend: no volatility is not zero volatility,
+        # so the term is left out rather than scored as calm.
+        volatility = self._index_value(player_data, "volatility")
+        if volatility is not None:
+            risk += volatility * 100
 
         # Injury history
         injury_count = len(player_data.get("injury_history", []))
@@ -1727,7 +1834,26 @@ class ScoutingReportGenerator:
         return transfer_fee + total_wages + signing_bonus + agent_fees
 
     def _assess_financial_risk(self, player_data: Dict, team_data: Dict) -> Dict:
-        """Assess financial risk of the transfer"""
+        """Assess financial risk of the transfer.
+
+        Reached from the risk assessment as well as the financial section, so
+        it needs its own guard: without one it priced an unpriceable player
+        from the stand-in index and reported 100% of budget - a real
+        calculation on an invented fee, which reads as a measured verdict
+        rather than as the absence it is.
+        """
+        if not self._can_price(player_data):
+            return {
+                "risk_level": None,
+                "risk_description": None,
+                "score": None,
+                "level": None,
+                "budget_impact": None,
+                "mitigation_strategies": [],
+                "basis": "No financial risk: there is no fee to weigh against "
+                         "the budget, supplied or derived.",
+            }
+
         total_investment = self._calculate_total_package(
             4,  # Assume 4-year contract
             self._calculate_base_wage(player_data, team_data),
@@ -2022,8 +2148,17 @@ class ScoutingReportGenerator:
 
     def _assess_performance_risk(self, player_data: Dict) -> Dict:
         """Assess performance-related risks"""
-        volatility = player_data["performance_index"]["volatility"]
-        trend = player_data["performance_index"]["trend"]
+        volatility = self._index_value(player_data, "volatility")
+        trend = self._index_value(player_data, "trend")
+        if volatility is None or trend is None:
+            return {
+                "score": None,
+                "level": None,
+                "factors": [],
+                "basis": "No performance risk: volatility and trend come from "
+                         "the index, and this player has none. An index needs "
+                         "three appearances.",
+            }
 
         risk_score = volatility * 50  # High volatility increases risk
 
@@ -2161,6 +2296,8 @@ class ScoutingReportGenerator:
         self, player_data: Dict, team_data: Dict, market_analysis: Dict
     ) -> Dict:
         """Generate detailed negotiation strategy"""
+        if not self._can_price(player_data):
+            return self._no_negotiation_strategy()
 
         # Determine negotiation position strength
         position_strength = self._assess_negotiation_position(player_data, team_data)
@@ -2391,8 +2528,9 @@ class ScoutingReportGenerator:
                 }
             )
 
-        # Performance trends
-        if player_data["performance_index"]["trend"] > 0:
+        # Performance trends. No index, no trajectory to argue from.
+        trend = self._index_value(player_data, "trend")
+        if trend is not None and trend > 0:
             points.append(
                 {
                     "topic": "Form trajectory",
