@@ -64,6 +64,13 @@ def player(**overrides):
         "current_team": "Brisbane Roar FC",
         "current_league": "A-League Men",
         "market_value": None,
+        # What the endpoint attaches before the generator sees a player:
+        # the anchor for the market he would be bought from. Leaving it out
+        # exercised a player whose market nobody had named, which the
+        # generator used to paper over with the most expensive anchor on
+        # the list — €30M per index 100, the World Cup scale.
+        "market_anchor": {"value": 2_500_000, "source": "curated",
+                          "samples": 0, "market": "a_league"},
         "match_score": 77.9,
         "performance_index": {"value": 71.0, "raw_value": 71.0, "trend": 0.1,
                               "volatility": 0.12, "confidence": 0.88,

@@ -63,18 +63,38 @@ class ScoutingReportGenerator:
     # marks it as an assumption rather than a fact.
     ASSUMED_AGE = 26
 
-    def _seller_anchor(self, player_data: Dict) -> Dict:
-        """Scale for the fee: the market the player is leaving."""
-        from app.core import markets
-        return player_data.get("market_anchor") or markets.anchor_for(markets.DEFAULT_MARKET)
+    def _seller_anchor(self, player_data: Dict) -> Optional[Dict]:
+        """Scale for the fee: the market the player is leaving.
 
-    def _buyer_anchor(self, team_data: Dict) -> Dict:
+        The `or markets.anchor_for(markets.DEFAULT_MARKET)` that used to end
+        this line was the same shortcut as the one in `market_of`, a level
+        down: an unknown market became "international", €30M per index 100,
+        the World Cup scale. Every A-League player carried it. None is the
+        answer when nobody has said what market this is.
+        """
+        return player_data.get("market_anchor")
+
+    def _buyer_anchor(self, team_data: Dict) -> Optional[Dict]:
         """Scale for what he produces: the market the buyer plays in."""
         from app.core import markets
         if team_data.get("market_anchor"):
             return team_data["market_anchor"]
         return markets.anchor_for(
             markets.market_of(team_data.get("league"), team_data.get("country")))
+
+    def _priced_market(self, player_data: Dict) -> Optional[str]:
+        """The market a fee would be expressed in, if there is one."""
+        return (self._seller_anchor(player_data) or {}).get("market")
+
+    @staticmethod
+    def _anchor_field(anchor: Optional[Dict], field: str, default=None):
+        """One named accessor instead of six `.get()` on a maybe-None.
+
+        Each of those six used `markets.DEFAULT_MARKET` as its default,
+        which is how an unpriceable player ended up denominated in the
+        World Cup market six separate times.
+        """
+        return (anchor or {}).get(field, default)
 
     # The index a club can find almost for free. Value is what a player adds
     # ABOVE that, not his absolute level: a squad-filler in the Premier League is
@@ -96,8 +116,8 @@ class ScoutingReportGenerator:
         index = (player_data.get("performance_index") or {}).get("value")
         return markets.project_index(
             index,
-            self._seller_anchor(player_data).get("market", markets.DEFAULT_MARKET),
-            self._buyer_anchor(team_data).get("market", markets.DEFAULT_MARKET),
+            self._anchor_field(self._seller_anchor(player_data), "market"),
+            self._anchor_field(self._buyer_anchor(team_data), "market"),
         )
 
     # What `_market_value` falls back on when there is no index to price from.
@@ -105,7 +125,7 @@ class ScoutingReportGenerator:
     # of a formula reads like a measurement and this one is a stand-in.
     ASSUMED_INDEX = 50
 
-    def _market_value(self, player_data: Dict) -> float:
+    def _market_value(self, player_data: Dict) -> Optional[float]:
         """The fee to reason about. Estimated from the index when the client
         supplies none, and flagged as an estimate wherever it is shown."""
         value = player_data.get("market_value")
@@ -114,7 +134,15 @@ class ScoutingReportGenerator:
         # Only reached through a caller that checked `_can_price`; the sections
         # that would publish this figure refuse to run without one.
         index = (player_data.get("performance_index") or {}).get("value") or self.ASSUMED_INDEX
-        anchor = self._seller_anchor(player_data)["value"]
+        anchor = self._anchor_field(self._seller_anchor(player_data), "value")
+        if anchor is None:
+            # None, not a raise and not a substituted market. An index can
+            # only become money through an anchor, and inventing one is how
+            # the A-League came to be priced on the World Cup scale. The
+            # first draft of this raised instead, which turned an absence
+            # into a crash - the same mistake as inventing a figure, just
+            # louder.
+            return None
         return round(float(index) / 100 * anchor * 0.5, 0)
 
     def _has_market_value(self, player_data: Dict) -> bool:
@@ -175,7 +203,14 @@ class ScoutingReportGenerator:
         substitution had: harmless in an accessor, a published judgement by the
         time it reaches the page.
         """
-        return self._has_market_value(player_data) or self._has_index(player_data)
+        # A supplied price needs no market: it is already in euros. An index
+        # needs one, because turning an index into money is exactly what the
+        # anchor does, and without it the figure would be denominated in a
+        # market nobody named.
+        if self._has_market_value(player_data):
+            return True
+        return bool(self._has_index(player_data)
+                    and self._seller_anchor(player_data))
 
     def _query_db(self, sql: str, params: dict, org_ids=None) -> list:
         """Run a read-only query restricted to the caller's tenants.
@@ -657,7 +692,10 @@ class ScoutingReportGenerator:
 
         presupuesto = (team_data.get("budget") or 0)
         valor = self._market_value(player_data)
-        if presupuesto:
+        # This finding reads the fee without asking whether there is one -
+        # the only money in the report that `generate_market_analysis`'s
+        # guard does not cover, because it is produced here.
+        if presupuesto and valor is not None:
             share = valor / presupuesto
             if share <= 0.4:
                 veredicto = "comfortably within budget"
@@ -2003,13 +2041,17 @@ class ScoutingReportGenerator:
             # so the reader needs to see it came from two markets, and whether
             # those anchors were measured or are still curation.
             "market_basis": {
-                "fee_market": self._seller_anchor(player_data).get("market"),
-                "fee_anchor_source": self._seller_anchor(player_data).get("source"),
-                "value_market": self._buyer_anchor(team_data).get("market"),
-                "value_anchor_source": self._buyer_anchor(team_data).get("source"),
+                "fee_market": self._anchor_field(
+                    self._seller_anchor(player_data), "market"),
+                "fee_anchor_source": self._anchor_field(
+                    self._seller_anchor(player_data), "source"),
+                "value_market": self._anchor_field(
+                    self._buyer_anchor(team_data), "market"),
+                "value_anchor_source": self._anchor_field(
+                    self._buyer_anchor(team_data), "source"),
                 "cross_market": (
-                    self._seller_anchor(player_data).get("market")
-                    != self._buyer_anchor(team_data).get("market")
+                    self._anchor_field(self._seller_anchor(player_data), "market")
+                    != self._anchor_field(self._buyer_anchor(team_data), "market")
                 ),
                 "projected_index": self._projected_for(player_data, team_data),
             },
@@ -2032,14 +2074,15 @@ class ScoutingReportGenerator:
 
         projected = markets.project_index(
             performance_index,
-            self._seller_anchor(player_data).get("market", markets.DEFAULT_MARKET),
-            self._buyer_anchor(team_data).get("market", markets.DEFAULT_MARKET),
+            self._anchor_field(self._seller_anchor(player_data), "market"),
+            self._anchor_field(self._buyer_anchor(team_data), "market"),
         )
         effective_index = projected["value"] if projected["value"] is not None else performance_index
 
         base_sporting_value = (
             self._above_replacement(effective_index)
-            * self._buyer_anchor(team_data)["value"] * position_importance
+            * (self._anchor_field(self._buyer_anchor(team_data), "value") or 0)
+            * position_importance
         )
 
         # Adjust for team needs

@@ -63,6 +63,13 @@ def player(**overrides):
         "current_team": "Club Vendedor",
         "market_value": None,
         "performance_index": None,
+        # What the endpoint attaches to every player before the generator
+        # sees one: the anchor for the market he would be bought from.
+        # Fixtures left it out, so they exercised a player whose market
+        # nobody had named — which the generator used to paper over with
+        # the most expensive anchor on the list.
+        "market_anchor": {"value": 2_500_000, "source": "curated",
+                          "samples": 0, "market": "a_league"},
         "metrics": {
             "passing": {"completion_rate": 0.81, "key_passes_per_90": 1.5},
             "shooting": {"shots_per_90": 2.5, "goals_per_90": 0.5},
@@ -331,6 +338,25 @@ class TheAccessor(unittest.TestCase):
         self.assertTrue(self.g._can_price(player(market_value=1.0)))
         self.assertTrue(self.g._can_price(
             player(performance_index=dict(WITH_INDEX))))
+
+    def test_an_index_alone_cannot_be_turned_into_money(self):
+        """An index is a position among peers. Becoming a fee takes an
+        anchor — how much an index of 100 is worth in some named market —
+        and without one the figure would be denominated in nothing.
+
+        It used to fall back on `international`, €30M per index 100, which
+        is the World Cup scale: every A-League player was priced on it, and
+        a 22-year-old whose league records €3M transfers came out at €11.2M.
+        """
+        sin_mercado = player(performance_index=dict(WITH_INDEX),
+                             market_anchor=None)
+        self.assertFalse(self.g._can_price(sin_mercado))
+        self.assertIsNone(self.g._market_value(sin_mercado))
+
+    def test_a_supplied_price_needs_no_market(self):
+        """It is already in euros; there is nothing to convert."""
+        self.assertTrue(self.g._can_price(
+            player(market_value=4_000_000.0, market_anchor=None)))
 
     def test_a_zero_price_is_not_a_price(self):
         self.assertFalse(self.g._can_price(player(market_value=0)),

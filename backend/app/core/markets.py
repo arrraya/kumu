@@ -40,10 +40,24 @@ CURATED_ANCHORS = {
     "brasileirao": 10_000_000,
     "argentina_primera": 6_000_000,
     "chile_primera": 2_000_000,
+    "a_league": 2_500_000,
     "international": 30_000_000,  # national-team data with no club market
 }
 
 DEFAULT_MARKET = "international"
+
+# What `market_of` answers when it does not recognise a league. It used to
+# answer DEFAULT_MARKET, and "international" is the World Cup scale at
+# €30M per index 100 - the third highest anchor of fifteen. So the value
+# standing for "Kumü does not know this market" was nearly the most
+# expensive one in the table, and the 101 A-League players were priced on
+# it: K. Jelacic came out at €11.2M in a league whose record fees are
+# around €3M. Everything downstream moved with it - the ROI, the opening
+# offer, the ceiling, the wage.
+#
+# None says what is true, and the sections that publish money now decline
+# rather than guess. The market can be declared at load; see ClubRecord.
+UNKNOWN_MARKET = None
 MIN_OBSERVED_FOR_DERIVATION = 15
 
 # Loose keywords, because league names arrive however each feed spells them.
@@ -62,6 +76,9 @@ _ALIASES = {
     "brasileirao": ["brasileir", "serie a brasil", "campeonato brasileiro"],
     "argentina_primera": ["argentina", "liga profesional"],
     "chile_primera": ["chile", "campeonato nacional"],
+    # The 101 players Kumü actually holds from a client source, priced as
+    # international at €30M per index 100 until this line existed.
+    "a_league": ["a-league", "a league", "australia"],
 }
 
 
@@ -76,7 +93,8 @@ def market_of(league: Optional[str], country: Optional[str] = None) -> str:
     for key, alias in pares:
         if alias in text:
             return key
-    return DEFAULT_MARKET
+    # Not DEFAULT_MARKET. See UNKNOWN_MARKET above for what that cost.
+    return UNKNOWN_MARKET
 
 
 def derive_anchor(db, market: str) -> Optional[Dict[str, Any]]:
@@ -116,14 +134,24 @@ def derive_anchor(db, market: str) -> Optional[Dict[str, Any]]:
     return {"value": round(median, 0), "source": "observed", "samples": len(implied)}
 
 
-def anchor_for(market: str, db=None) -> Dict[str, Any]:
-    """The anchor to use for a market, measured if possible, curated if not."""
+def anchor_for(market: Optional[str], db=None) -> Optional[Dict[str, Any]]:
+    """The anchor for a market, measured if possible, curated if not.
+
+    None in, None out. `CURATED_ANCHORS.get(market, CURATED_ANCHORS[
+    DEFAULT_MARKET])` used to turn an unrecognised market into the most
+    expensive anchor on the list without anybody asking.
+    """
+    if market is None:
+        return None
     if db is not None:
         measured = derive_anchor(db, market)
         if measured:
             return {**measured, "market": market}
+    value = CURATED_ANCHORS.get(market)
+    if value is None:
+        return None
     return {
-        "value": CURATED_ANCHORS.get(market, CURATED_ANCHORS[DEFAULT_MARKET]),
+        "value": value,
         "source": "curated",
         "samples": 0,
         "market": market,
@@ -181,6 +209,7 @@ CURATED_STRENGTH = {
     "liga_mx": 0.68,
     "argentina_primera": 0.68,
     "chile_primera": 0.58,
+    "a_league": 0.62,
 }
 
 
@@ -198,6 +227,14 @@ def project_index(index: float, from_market: str, to_market: str) -> dict:
     """
     if index is None:
         return {"value": None, "factor": 1.0, "adjusted": False}
+    # An unnamed market has no strength to divide by. Substituting one would
+    # project the player into a league nobody chose, and the factor would
+    # look like a measurement.
+    if from_market is None or to_market is None:
+        return {"value": None, "factor": None, "adjusted": False,
+                "basis": "Not projected: %s market is not known."
+                         % ("the player's" if from_market is None
+                            else "the buying club's")}
     factor = strength_for(from_market) / strength_for(to_market)
     return {
         "value": round(min(100.0, float(index) * factor), 1),

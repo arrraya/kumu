@@ -190,6 +190,13 @@ class ClubRecord(BaseModel):
     name: str = Field(..., min_length=1)
     league: Optional[str] = None
     country: Optional[str] = None
+    # Which transfer market this club sells and buys in. Kumü recognises many
+    # leagues from their names, but when it does not it used to fall back on
+    # "international" - €30M per index 100, the World Cup scale - and price
+    # every player in the file on it. Declaring it here is the difference
+    # between a figure in a named currency and a figure in none; leave it out
+    # and Kumü will try to read the league, and say so if it cannot.
+    market: Optional[str] = None
     budget: Optional[float] = Field(None, ge=0)
     formation: Optional[str] = None
     possession: Optional[float] = Field(None, ge=0, le=1)
@@ -235,6 +242,20 @@ def describe_capabilities(payload: IngestPayload) -> Dict[str, Any]:
     with_goalkeeping = sum(1 for p in keepers if p.metrics.goalkeeping is not None)
 
     club = payload.club
+    # Declared beats inferred, and neither is invented: `market_of` answers
+    # None for a league it does not recognise.
+    from app.core import markets
+
+    market_key, market_source = None, None
+    if club:
+        if club.market and club.market in markets.CURATED_ANCHORS:
+            market_key, market_source = club.market, "declared"
+        elif club.market:
+            market_key, market_source = None, "declared but not recognised"
+        else:
+            market_key = markets.market_of(club.league, club.country)
+            market_source = "read from the league name" if market_key else None
+
     squad_size = len(club.squad) if club else 0
     has_style = bool(club and club.possession is not None
                      and club.pressing_intensity is not None)
@@ -282,6 +303,19 @@ def describe_capabilities(payload: IngestPayload) -> Dict[str, Any]:
             "requires": "market values from the client; otherwise Kumu estimates them",
             "covers": with_value,
         },
+        # Without this, nothing in the report carries a price: no valuation,
+        # no offer range, no wage, no ROI. A supplied market_value needs no
+        # market, because it is already in euros; an index does, because
+        # turning an index into money is exactly what the anchor does.
+        "monetary_figures": {
+            # `with_value == total` is vacuously true for an empty file, so
+            # a payload with no players reported that money worked.
+            "enabled": bool(market_key) or (total > 0 and with_value == total),
+            "requires": "the club's transfer market, declared as `market` or "
+                        "readable from its league name",
+            "market": market_key,
+            "market_source": market_source,
+        },
     }
 
     warnings = []
@@ -291,6 +325,20 @@ def describe_capabilities(payload: IngestPayload) -> Dict[str, Any]:
             f"Kumu's own codes are {', '.join(sorted(POSITIONS))}, and it "
             f"also reads the position names StatsBomb and SkillCorner use."
         )
+    if club and market_key is None:
+        conocidos = ", ".join(sorted(markets.CURATED_ANCHORS))
+        if club.market:
+            warnings.append(
+                f"Market {club.market!r} is not one Kumü knows, so no figure "
+                f"in the report will carry a price. Known markets: {conocidos}."
+            )
+        else:
+            warnings.append(
+                f"Kumü does not recognise {club.league!r} as a transfer "
+                f"market, so it cannot turn an index into money: no "
+                f"valuation, offer range, wage or ROI. Declare `market` on "
+                f"the club to switch them on. Known markets: {conocidos}."
+            )
     if club and not club.squad:
         warnings.append(
             "The club has no squad, so Kumu cannot say whether a signing improves it — "

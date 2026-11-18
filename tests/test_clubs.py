@@ -59,6 +59,13 @@ def player(**overrides):
         "age": 23,
         "current_team": "Brisbane Roar FC",
         "market_value": None,
+        # What the endpoint attaches to every player before the generator
+        # sees one: the anchor for the market he would be bought from.
+        # Fixtures left it out, so they exercised a player whose market
+        # nobody had named — which the generator used to paper over with
+        # the most expensive anchor on the list.
+        "market_anchor": {"value": 2_500_000, "source": "curated",
+                          "samples": 0, "market": "a_league"},
         "performance_index": {"value": 71.0, "raw_value": 71.0, "trend": 0.1,
                               "volatility": 0.12, "confidence": 0.88,
                               "scaled": True},
