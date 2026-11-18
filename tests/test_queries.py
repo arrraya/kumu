@@ -63,11 +63,13 @@ class QueriesRunAgainstRealRows(unittest.TestCase):
         cls._ctx.__exit__(None, None, None)
 
     def player(self, pid):
+        # Session.get, not Query.get: the legacy form warns on every call
+        # and buried the real output under three screens of deprecations.
         return self.g.build_player_data(
-            self.db.query(self.models.Player).get(pid))
+            self.db.get(self.models.Player, pid))
 
     def club(self, tid):
-        t = self.db.query(self.models.Team).get(tid)
+        t = self.db.get(self.models.Team, tid)
         return {
             "id": t.id, "name": t.name, "league": t.league,
             "country": t.country, "budget": t.budget,
