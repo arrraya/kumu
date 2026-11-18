@@ -358,5 +358,48 @@ class EverySectionStillGenerates(unittest.TestCase):
             set(ScoutingReportGenerator.SECTIONS) - set(report), set())
 
 
+class TheVerifierObjectsToClaimsNotWords(unittest.TestCase):
+    """The checker that watches the reports needs watching too.
+
+    Its first run objected 24 times — three goalkeepers against eight
+    clubs — to reports that were right. Kumü declines to rate a keeper
+    the source carries no goalkeeping for, and the refusal ends "supply
+    those three and the rating, the percentile and the recommendation all
+    start working". The checker searched for the word and found it. What
+    makes a percentile a claim is a figure in front of it.
+    """
+
+    def setUp(self):
+        sys.path.insert(0, os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "pipeline"))
+        import verify_reports
+        self.claim = verify_reports.PERCENTILE_CLAIM
+
+    def test_a_refusal_that_mentions_percentiles_is_not_a_claim(self):
+        self.assertIsNone(self.claim.search(
+            "Kumü does not rate this goalkeeper: the source carries no "
+            "goalkeeping. Supply those three and the rating, the percentile "
+            "and the recommendation all start working."))
+
+    def test_a_stated_figure_is(self):
+        self.assertIsNotNone(self.claim.search(
+            "places the player in the 70th percentile among the 53 "
+            "same-position players Kumü holds"))
+
+    def test_the_sentence_that_states_nothing_is_not(self):
+        self.assertIsNone(self.claim.search(
+            "No percentile is stated: Kumü holds neither a peer group for "
+            "this position nor a reference population."))
+
+    def test_the_old_bundesliga_sentence_would_still_be_caught(self):
+        """Check 1 is about the league; this one is about the figure. The
+        sentence that started all of this trips both."""
+        said = ("Statistical analysis places the player in the 70th "
+                "percentile for their position in Bundesliga.")
+        self.assertIsNotNone(self.claim.search(said))
+        self.assertIn("Bundesliga", said)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

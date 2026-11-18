@@ -70,6 +70,10 @@ def _detener(signum, frame):  # noqa: ARG001
     print("\n[!] cortando al terminar este reporte…", file=sys.stderr)
 
 
+# "70th percentile", not the bare word. See check() for what this cost.
+PERCENTILE_CLAIM = re.compile(r"\b\d+\s*(?:st|nd|rd|th)\s+percentile\b", re.I)
+
+
 def spread(rows, n, key):
     """N rows covering as many distinct values of `key` as possible.
 
@@ -117,11 +121,16 @@ def check(report, player, team, leagues) -> list:
                        % (league, said.strip()))
 
     # 2. A percentile is stated only where one was established.
+    #
+    # Searched for the word "percentile" at first, and objected 24 times to
+    # three goalkeepers Kumü had correctly declined to rate: their refusal
+    # ends "supply those three and the rating, the percentile and the
+    # recommendation all start working". The word was there; the claim was
+    # not. A figure is what makes it a claim, so that is what to look for.
     pct = summary.get("overall_percentile")
-    if pct is None and "percentile" in said.lower():
-        if "No percentile is stated" not in said:
-            bad.append("no hay percentil pero la frase habla de uno: %s"
-                       % said.strip())
+    if pct is None and PERCENTILE_CLAIM.search(said):
+        bad.append("no hay percentil pero la frase afirma uno: %s"
+                   % said.strip()[:160])
 
     # 3. A metric with no benchmark keeps its value and loses its verdict.
     stats = report.get("statistical_overview") or {}
@@ -293,15 +302,22 @@ def main() -> int:
             print("\n  ROTO  %s / %s\n    %s" % (name, club, exc))
             print("    " + tb.strip().replace("\n", "\n    "))
 
-        vistos = set()
+        vistos = {}
         for name, club, problema in fallos:
-            clave = re.sub(r"\d+", "N", problema)[:70]
-            if clave in vistos:
-                continue
-            vistos.add(clave)
-            print("\n  %s / %s\n    %s" % (name, club, problema))
-        if len(vistos) < len(fallos):
-            print("\n  (%d objeciones en total, %d formas distintas)"
+            # The shape, which is the prefix before the colon. Keying on the
+            # whole message counted one defect in three goalkeepers as three
+            # defects, because their names travel inside the text.
+            clave = problema.split(":")[0]
+            vistos.setdefault(clave, []).append((name, club, problema))
+        for clave, casos in vistos.items():
+            name, club, problema = casos[0]
+            print("\n  [%d caso(s)]  %s / %s\n    %s"
+                  % (len(casos), name, club, problema))
+            otros = sorted({n for n, _, _ in casos[1:]})
+            if otros:
+                print("    también: %s" % ", ".join(otros[:8]))
+        if fallos:
+            print("\n  (%d objeciones, %d forma(s) distinta(s))"
                   % (len(fallos), len(vistos)))
 
         return 1 if (rotos or fallos) else 0
