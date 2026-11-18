@@ -82,6 +82,18 @@ async def generate_report(
         raise HTTPException(status_code=404, detail="Player not found")
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
+    # National sides live in this table because their squads do. Nobody
+    # signs a player to Belgium, and a scouting report that priced the move
+    # and recommended a negotiation window would have been answering a
+    # question that cannot be asked. The destination list already excluded
+    # them — in the browser, which is not where a rule like this belongs.
+    if (getattr(team, "team_type", None) or "club") == "national":
+        raise HTTPException(
+            status_code=400,
+            detail=(f"{team.name} is a national side, not a transfer "
+                    f"destination. Scouting reports are generated against "
+                    f"clubs."),
+        )
 
     # Convert ORM models to dicts expected by the report generator
     # Same adapter the generator exposes, so the metric defaults live in

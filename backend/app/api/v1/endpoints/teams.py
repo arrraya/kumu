@@ -17,10 +17,23 @@ def get_teams(
     country: Optional[str] = None,
     min_budget: Optional[float] = None,
     max_budget: Optional[float] = None,
+    team_type: Optional[str] = Query(
+        "club",
+        description='"club" (default), "national", or "all". National sides '
+                    'are stored here because their squads are, not because a '
+                    'player can be signed to one.',
+    ),
     db: Session = Depends(get_db),
     org_ids: list = Depends(security.readable_org_ids),
 ):
-    """Get all teams with optional filters"""
+    """Get all teams with optional filters.
+
+    Defaults to clubs. The destination list excluded national sides in the
+    browser, with `teamType !== 'national'`, so every other caller got them:
+    the verification script paired players against Belgium and Argentina,
+    and `/reports/generate` would have produced a transfer recommendation
+    for either.
+    """
     teams = team_service.get_teams(
         db,
         org_ids=org_ids,
@@ -30,6 +43,7 @@ def get_teams(
         country=country,
         min_budget=min_budget,
         max_budget=max_budget,
+        team_type=None if team_type == "all" else team_type,
     )
     return teams
 

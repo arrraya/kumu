@@ -29,6 +29,7 @@ def get_teams(
     min_budget: Optional[float] = None,
     max_budget: Optional[float] = None,
     formation: Optional[str] = None, org_ids=None,
+    team_type: Optional[str] = None,
 ) -> List[models.Team]:
     """
     Get teams with optional filtering.
@@ -42,6 +43,12 @@ def get_teams(
         min_budget: Minimum budget filter
         max_budget: Maximum budget filter
         formation: Filter by formation
+        team_type: "club" or "national". National sides are in this table
+            because their squads are, not because anybody can sign a player
+            to one, and the rule that kept them out of the destination list
+            lived in the browser - so the API handed them to every other
+            caller, and a scouting report could be generated for signing a
+            forward to Belgium.
 
     Returns:
         List of teams matching the criteria
@@ -58,6 +65,13 @@ def get_teams(
         query = query.filter(models.Team.budget <= max_budget)
     if formation:
         query = query.filter(models.Team.formation == formation)
+    if team_type == "club":
+        # NULL counts as a club: the column was added after the first rows
+        # were written and the backfill only covered one organisation.
+        query = query.filter(
+            (models.Team.team_type == "club") | (models.Team.team_type.is_(None)))
+    elif team_type:
+        query = query.filter(models.Team.team_type == team_type)
 
     return query.offset(skip).limit(limit).all()
 

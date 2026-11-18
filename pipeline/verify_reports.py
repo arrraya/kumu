@@ -210,8 +210,15 @@ def main() -> int:
             visibles = [i for i in (org_id, publica_id) if i is not None]
             players = (db.query(models.Player)
                        .filter(models.Player.organization_id == org_id).all())
+            # Clubs only, which is what /reports/generate now accepts. The
+            # first run paired players against Belgium, Argentina, Australia
+            # and Brazil and called them clubs without a budget; they are
+            # national sides, and the difference is not a missing figure.
             teams = (db.query(models.Team)
-                     .filter(models.Team.organization_id.in_(visibles)).all())
+                     .filter(models.Team.organization_id.in_(visibles))
+                     .filter((models.Team.team_type == "club")
+                             | (models.Team.team_type.is_(None)))
+                     .all())
             if args.player:
                 players = [p for p in players if p.id in set(args.player)]
             if args.team:
