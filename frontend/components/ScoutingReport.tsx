@@ -13,6 +13,7 @@ import {
 } from 'recharts';
 import { Player, Match } from '@/types';
 import { api } from '@/lib/api';
+import { loadReport, saveReport } from '@/lib/reportCache';
 import PitchMap from '@/components/PitchMap'
 import PoseClip from '@/components/PoseClip'
 
@@ -197,18 +198,19 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
   const [clubs, setClubs] = useState<any[]>([]);
   const [switchingTeam, setSwitchingTeam] = useState(false);
 
+  const [cachedAt, setCachedAt] = useState<number | null>(null);
+
   useEffect(() => {
-    // Load report from localStorage or generate new one
-    const savedReport = localStorage.getItem('currentReport');
-    if (savedReport) {
-      setReport(JSON.parse(savedReport));
-      setLoading(false);
-    } else if (player && match) {
-      setReport(null);
-      setLoading(false);
+    // Only this player's report, and only if it is recent. See lib/reportCache.
+    const cached = loadReport(player?.id);
+    if (cached) {
+      setReport(cached.report);
+      setCachedAt(cached.stale ? cached.savedAt : null);
     } else {
-      setLoading(false);
+      setReport(null);
+      setCachedAt(null);
     }
+    setLoading(false);
   }, [player, match]);
 
   useEffect(() => {
@@ -229,8 +231,9 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
     try {
       setSwitchingTeam(true);
       const fresh = await api.reports.generate(String(playerId), String(teamId));
-      localStorage.setItem('currentReport', JSON.stringify(fresh));
+      saveReport(playerId, fresh);
       setReport(fresh);
+      setCachedAt(null);
     } catch (error) {
       console.error('Could not regenerate report:', error);
       alert('Could not generate the report for that club.');
@@ -1312,6 +1315,18 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
           "Age 22, outside the usual peak window". The backend now reports
           only the gaps this player and this club actually have, so a caveat
           here means something is missing rather than that a sentence exists. */}
+      {/* A cached report is a figure Kumü stood behind at some past moment,
+          not necessarily the one it would give now. The A-League anchor
+          changed by an order of magnitude in an afternoon. */}
+      {cachedAt !== null && (
+        <p className="mt-3 max-w-read text-sm">
+          <span className="is-curated">
+            Shown from your last run, {new Date(cachedAt).toLocaleString()}.
+            Pick a club above to generate it again.
+          </span>
+        </p>
+      )}
+
       {report.source_notes && report.source_notes.length > 0 && (
         <p className="mt-3 max-w-read text-sm text-ink-soft leading-relaxed">
           {report.source_notes.join(' ')}

@@ -11,6 +11,7 @@ import {
   ChevronRight, Activity, Shield, Zap, Users, Eye 
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { saveReport } from '@/lib/reportCache';
 import { Player, Team, Match } from '@/types';
 import PlayerCard from './PlayerCard';
 import ClubSearch from './ClubSearch';
@@ -104,7 +105,7 @@ const PlayerMatching: React.FC<PlayerMatchingProps> = ({
     if (!selectedPlayer || !match) return;
     try {
       const report = await api.reports.generate(String(selectedPlayer.id), String(match.team.id));
-      localStorage.setItem("currentReport", JSON.stringify(report));
+      saveReport(selectedPlayer.id, report);
       setSelectedMatch(match);
       setActiveView("report");
     } catch (error) {
