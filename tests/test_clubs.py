@@ -88,7 +88,9 @@ class EverySectionSurvivesAClubWithNoBudget(unittest.TestCase):
 
     def test_the_whole_report_generates(self):
         report = self.g.generate_full_report(self.p, self.t)
-        self.assertEqual(len(report), 9)
+        self.assertEqual(
+            set(ScoutingReportGenerator.SECTIONS) - set(report), set(),
+            "every section must still be present")
 
     def test_market_analysis(self):
         self.g.generate_market_analysis(self.p, self.t)
@@ -142,7 +144,9 @@ class AClubWithABudgetIsUnaffected(unittest.TestCase):
 
     def test_the_whole_report_still_generates(self):
         report = self.g.generate_full_report(self.p, dict(FULLY_DESCRIBED))
-        self.assertEqual(len(report), 9)
+        self.assertEqual(
+            set(ScoutingReportGenerator.SECTIONS) - set(report), set(),
+            "every section must still be present")
 
 
 class TheBudgetAccessor(unittest.TestCase):
@@ -167,27 +171,67 @@ class NothingElseDividesByAMissingField(unittest.TestCase):
     """A sweep, because this one was found by walking into it."""
 
     def test_no_unguarded_budget_arithmetic(self):
-        import re
+        """Every read of the budget sits behind a check in its own function.
+
+        The first version of this test looked three lines back from each use.
+        That passed while the only guard was on the same line, and failed the
+        moment the guard became a proper early return twenty lines above —
+        reporting a defect where the fix was. A window is the wrong tool: the
+        question is whether the function checked before it divided, not
+        whether the check is nearby.
+        """
+        import ast
 
         path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             "backend", "app", "services", "scouting_report_generator.py")
         with open(path, encoding="utf-8") as handle:
-            lines = handle.read().splitlines()
+            tree = ast.parse(handle.read())
+
+        def reads_budget(node):
+            """`team_data["budget"]`, however it is spelled."""
+            return (isinstance(node, ast.Subscript)
+                    and isinstance(node.slice, ast.Constant)
+                    and node.slice.value == "budget")
+
+        def guards(node):
+            """`_has_budget(...)` or `.get("budget")`, either way a check."""
+            if isinstance(node, ast.Attribute) and node.attr == "_has_budget":
+                return True
+            return (isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "get"
+                    and any(isinstance(a, ast.Constant) and a.value == "budget"
+                            for a in node.args))
 
         offenders = []
-        for number, line in enumerate(lines, 1):
-            if 'team_data["budget"]' not in line or line.strip().startswith("#"):
+        for fn in ast.walk(tree):
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
-            # Guarded either on the same line or by the one before it.
-            window = " ".join(lines[max(0, number - 3):number])
-            if "_has_budget" in window or 'team_data.get("budget")' in window:
+            body = list(ast.walk(fn))
+            if not any(reads_budget(n) for n in body):
                 continue
-            offenders.append((number, line.strip()[:70]))
+            if any(guards(n) for n in body):
+                continue
+            offenders.append(fn.name)
 
         self.assertEqual(
             offenders, [],
-            "every arithmetic on a budget needs to know there is one")
+            "these divide by a budget without ever asking whether there is "
+            "one: " + ", ".join(offenders))
+
+    def test_the_sweep_can_fail(self):
+        """A check that cannot fail is not a check."""
+        import ast
+        tree = ast.parse(
+            "def f(self, team_data):\n"
+            "    return team_data['budget'] / 2\n")
+        fn = tree.body[0]
+        reads = [n for n in ast.walk(fn)
+                 if isinstance(n, ast.Subscript)
+                 and isinstance(n.slice, ast.Constant)
+                 and n.slice.value == "budget"]
+        self.assertTrue(reads, "the matcher no longer recognises a budget read")
 
 
 if __name__ == "__main__":

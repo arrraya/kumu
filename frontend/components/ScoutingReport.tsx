@@ -40,7 +40,9 @@ interface ScoutingReportData {
     recommendation: string;
     action: string;
     match_score: number;
-    overall_percentile: number;
+    overall_percentile: number | null;
+    metric_percentile_average?: number | null;
+    percentile_basis?: string | null;
     key_findings: any[];
     executive_statement: string;
   };
@@ -136,7 +138,11 @@ interface ScoutingReportData {
     risk_score: number | null;
     risk_basis?: string | null;
     risk_factors: {
-      [key: string]: { score: number; level: string };
+      [key: string]: {
+        score: number | null;
+        level: string | null;
+        basis?: string | null;
+      };
     };
     mitigation_plan: string[];
   };
@@ -163,6 +169,9 @@ interface ScoutingReportData {
     };
     tactics: string[];
   };
+  // What this source does not carry, for this player and this club. Empty
+  // when it carries everything the report asked of it.
+  source_notes?: string[];
 }
 
 const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
@@ -914,7 +923,11 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
    const riskData = Object.entries(report.risk_assessment.risk_factors).map(([type, data]) => ({
      type: type.replace(/_/g, ' ').replace(/risk/g, ''),
      score: data.score,
-     level: data.level
+     level: data.level,
+     // Carried through because a card showing "—" says only that a number is
+     // missing. The backend already explains which input was absent; the
+     // grid was dropping that sentence on the floor.
+     basis: data.basis
    }));
 
    return (
@@ -952,6 +965,11 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
                }`}>
                  {risk.level ? `${risk.level} Risk` : 'Not assessed'}
                </div>
+               {risk.basis && (
+                 <p className="text-xs text-ink-soft mt-2 leading-snug">
+                   {risk.basis}
+                 </p>
+               )}
              </div>
            ))}
          </div>
@@ -1168,7 +1186,13 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
                 ? report.executive_summary.overall_percentile
                 : '—'}
             </div>
-            <div className="text-xs text-ink-faint mt-1">League percentile</div>
+            {/* Not a league percentile. `_positional_percentile` ranks
+                against every same-position player Kumü holds, with no league
+                filter, and calling it a league figure is what let the
+                executive sentence name the assessing club's competition. */}
+            <div className="text-xs text-ink-faint mt-1">
+              Positional percentile
+            </div>
           </div>
           <button
             onClick={handleDownloadPdf}
@@ -1189,12 +1213,17 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
         <span><span className="is-estimated font-medium">Estimated</span> by Kumü where the source carries nothing</span>
         <span><span className="is-curated font-medium">Decided</span> in advance and replaced as data arrives</span>
       </div>
-      <p className="mt-3 max-w-read text-sm text-ink-soft leading-relaxed">
-        Age is not carried by this source, so no age-dependent judgement is made. Market
-        values are estimated from performance. Club playing styles and expected
-        levels are declared judgements, and roles that rely on aerial duels or
-        blocks score low because the source does not record them.
-      </p>
+      {/* Derived, not written once. This paragraph used to be fixed prose
+          asserting four things about "this source", and the first of them —
+          that age is not carried — printed directly above a finding reading
+          "Age 22, outside the usual peak window". The backend now reports
+          only the gaps this player and this club actually have, so a caveat
+          here means something is missing rather than that a sentence exists. */}
+      {report.source_notes && report.source_notes.length > 0 && (
+        <p className="mt-3 max-w-read text-sm text-ink-soft leading-relaxed">
+          {report.source_notes.join(' ')}
+        </p>
+      )}
     </header>
 
      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">

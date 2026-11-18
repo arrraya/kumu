@@ -2,7 +2,7 @@ import json
 
 import numpy as np
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
 
@@ -258,21 +258,48 @@ class ScoutingReportGenerator:
             },
         }
 
-    def calculate_percentile(self, value: float, metric: str, position: str, league: str) -> int:
-        """Calculate percentile rank for a given metric"""
-        if position not in self.benchmarks:
-            return 50  # Default to average if no benchmark
-        if league not in self.benchmarks[position]:
-            # Fall back to any available reference population for this position
-            # (e.g. "World Cup 2022" pipeline benchmarks) before giving up.
-            available = list(self.benchmarks[position].keys())
-            if not available:
-                return 50
-            league = available[0]
+    def percentile_population(self, position: str, league: str) -> Optional[str]:
+        """The reference population a percentile for this position comes from.
 
-        benchmarks = self.benchmarks[position][league].get(metric, {})
+        The club's own league when Kumü holds benchmarks for it, otherwise
+        whichever population it does hold. The substitution is legitimate -
+        a forward measured against the 2022 World Cup is a real measurement -
+        but it has to be named, because until it was the report printed the
+        result under the assessing club's league and the reader had no way
+        to tell the two apart.
+        """
+        populations = self.benchmarks.get(position) or {}
+        if not populations:
+            return None
+        if league in populations:
+            return league
+        # Deterministic: `list(...)[0]` followed whatever order the rows came
+        # back in, so the same player could be ranked against a different
+        # population on two consecutive loads.
+        return sorted(populations)[0]
+
+    def calculate_percentile(self, value: float, metric: str, position: str,
+                             league: str) -> Optional[int]:
+        """Where `value` sits in that population, or None if there is none.
+
+        It used to return 50 whenever a benchmark was missing. Fifty is not a
+        neutral default: it is the assertion that the player is exactly
+        average, and it reached the report as "50th percentile · Average
+        performance" for metrics Kumü held no reference for at all. Averaged
+        together, those defaults became the executive summary's "individual
+        metrics (50th)" - a finding about a footballer assembled entirely
+        out of his absence.
+
+        None says the honest thing, and every caller now has to decide what
+        to show instead of a number.
+        """
+        population = self.percentile_population(position, league)
+        if population is None:
+            return None
+
+        benchmarks = self.benchmarks[position][population].get(metric, {})
         if not benchmarks:
-            return 50
+            return None
 
         for percentile in sorted(benchmarks.keys(), reverse=True):
             if value >= benchmarks[percentile]:
@@ -345,8 +372,18 @@ class ScoutingReportGenerator:
         below = sum(1 for v in values if v < float(value))
         return round(below / len(values) * 100, 1)
 
-    def _positional_percentile(self, player_data: Dict, org_ids=None) -> Optional[float]:
-        """True percentile of the player's index among same-position peers."""
+    def _positional_percentile(self, player_data: Dict,
+                               org_ids=None) -> Optional[Tuple[float, int]]:
+        """The player's index among same-position peers, and how many there were.
+
+        The size travels with the figure because the report has to state it.
+        A percentile is a claim about a population, and a reader who is not
+        told which one will supply one themselves: the executive summary said
+        "70th percentile for their position in Bundesliga" for an A-League
+        forward, purely because Borussia Dortmund was the club in the
+        dropdown. The ranking below has no league filter at all - it is every
+        same-position player in the organisations this caller may read.
+        """
         position = player_data.get("position") or ""
         index = (player_data.get("performance_index") or {}).get("value")
         if not position or not isinstance(index, (int, float)):
@@ -365,7 +402,8 @@ class ScoutingReportGenerator:
         values = [float(r[0]) for r in rows if r[0] is not None]
         if len(values) < 5:
             return None
-        return round(sum(1 for v in values if v < float(index)) / len(values) * 100, 1)
+        rank = round(sum(1 for v in values if v < float(index)) / len(values) * 100, 1)
+        return rank, len(values)
 
     def generate_executive_summary(self, player_data: Dict, team_data: Dict, org_ids=None) -> Dict:
         """Generate executive summary with key findings"""
@@ -389,35 +427,63 @@ class ScoutingReportGenerator:
             recommendation = "NOT RECOMMENDED"
             action = "Consider alternative targets"
 
-        # Calculate key metrics
+        # Calculate key metrics. `calculate_percentile` returns None where
+        # Kumü holds no reference population, and those are dropped rather
+        # than averaged: a missing benchmark used to arrive here as 50 and
+        # pull the average toward a verdict nobody measured.
         percentile_values = [
-            self.calculate_percentile(
-                player_data["metrics"].get(cat, {}).get(metric, 0),
-                metric,
-                player_data["position"],
-                team_data["league"],
+            p for p in (
+                self.calculate_percentile(
+                    player_data["metrics"].get(cat, {}).get(metric, 0),
+                    metric,
+                    player_data["position"],
+                    team_data["league"],
+                )
+                for cat in player_data["metrics"]
+                for metric in player_data["metrics"][cat]
             )
-            for cat in player_data["metrics"]
-            for metric in player_data["metrics"][cat]
+            if p is not None
         ]
         # C2: averaging percentiles does not yield a percentile — they are not
         # additive, so a player at p90 and p50 is not "at p70". Rank the player
         # against same-position peers for a real figure, and keep the metric
         # average as a separate, clearly named one.
-        metric_percentile_average = float(np.mean(percentile_values)) if percentile_values else 50.0
+        metric_percentile_average = (
+            float(np.mean(percentile_values)) if percentile_values else None
+        )
         ranked = self._positional_percentile(player_data, org_ids)
-        performance_percentile = ranked if ranked is not None else metric_percentile_average
+        peers = ranked[1] if ranked is not None else None
+        population = self.percentile_population(
+            player_data["position"], team_data["league"])
+
+        if ranked is not None:
+            performance_percentile = ranked[0]
+        elif metric_percentile_average is not None:
+            performance_percentile = metric_percentile_average
+        else:
+            performance_percentile = None
 
         return {
             "recommendation": recommendation,
             "action": action,
             "match_score": match_score,
-            "overall_percentile": int(performance_percentile),
-            "metric_percentile_average": int(metric_percentile_average),
+            "overall_percentile": (
+                int(performance_percentile)
+                if performance_percentile is not None else None
+            ),
+            "metric_percentile_average": (
+                int(metric_percentile_average)
+                if metric_percentile_average is not None else None
+            ),
             "percentile_basis": (
-                "ranked against same-position players in the database"
+                "ranked against the %d same-position players Kumü holds" % peers
                 if ranked is not None
-                else "average of individual metric percentiles (no peer ranking available)"
+                else "average of %d individual metric percentiles, measured "
+                     "against %s (no peer ranking available)"
+                     % (len(percentile_values), population)
+                if metric_percentile_average is not None
+                else "not established: no peer ranking and no reference "
+                     "population for this position"
             ),
             # Findings say something the headline figures do not. The
             # percentile and the compatibility score already lead the report,
@@ -427,8 +493,44 @@ class ScoutingReportGenerator:
             "key_findings": self._key_findings(
                 player_data, team_data, metric_percentile_average, performance_percentile
             ),
-            "executive_statement": f"{player_data['name']} represents a {recommendation.lower()} acquisition for {team_data['name']}. Statistical analysis places the player in the {ordinal(performance_percentile)} percentile for their position in {team_data.get('league') or 'their league'}.",
+            "executive_statement": self._executive_statement(
+                player_data, team_data, recommendation,
+                performance_percentile, peers, population,
+            ),
         }
+
+    def _executive_statement(self, player_data: Dict, team_data: Dict,
+                             recommendation: str, percentile: Optional[float],
+                             peers: Optional[int],
+                             population: Optional[str]) -> str:
+        """The headline sentence, naming the population the figure came from.
+
+        It used to end "…percentile for their position in {league}", where
+        the league was the assessing club's. K. Jelacic, an A-League forward,
+        was reported at the 70th percentile "in Bundesliga" because Borussia
+        Dortmund happened to be selected. The percentile was sound; the
+        population was invented by the sentence that reported it, and a
+        reader checking the claim against the Bundesliga would have found
+        nothing to check it against.
+        """
+        opening = ("%s represents a %s acquisition for %s."
+                   % (player_data["name"], recommendation.lower(),
+                      team_data["name"]))
+
+        if peers:
+            return ("%s Statistical analysis places the player in the %s "
+                    "percentile among the %d same-position players Kumü "
+                    "holds." % (opening, ordinal(percentile), peers))
+
+        if percentile is not None:
+            return ("%s No peer ranking was available, so the %s percentile "
+                    "shown is an average of this player's individual metrics "
+                    "against %s, not a rank among other players."
+                    % (opening, ordinal(percentile), population))
+
+        return ("%s No percentile is stated: Kumü holds neither a peer group "
+                "for this position nor a reference population to measure the "
+                "individual metrics against." % opening)
 
     def _no_executive_summary(self, player_data: Dict, team_data: Dict,
                               reason: str) -> Dict:
@@ -469,7 +571,18 @@ class ScoutingReportGenerator:
 
         # Where the player is strong and weak relative to his own average, which
         # is more useful than a single overall rank the header already shows.
-        if metric_avg and abs(metric_avg - overall) >= 8:
+        #
+        # Both figures can now be absent: the metric average is None when no
+        # benchmark covers this position, the overall rank when there is also
+        # no peer group. Comparing them was how a pair of missing populations
+        # used to become "rates higher overall than the individual metrics
+        # suggest" - a contrast drawn between two numbers that were both the
+        # same default.
+        comparable = (
+            isinstance(metric_avg, (int, float))
+            and isinstance(overall, (int, float))
+        )
+        if comparable and abs(metric_avg - overall) >= 8:
             if metric_avg > overall:
                 out.append({
                     "text": (f"Individual metrics ({ordinal(metric_avg)}) rate higher than "
@@ -555,22 +668,40 @@ class ScoutingReportGenerator:
         league = team_data["league"]
         metrics_analysis = {}
 
+        population = self.percentile_population(position, league)
+
         for category, metrics in player_data["metrics"].items():
             category_analysis = {}
             for metric, value in metrics.items():
                 percentile = self.calculate_percentile(value, metric, position, league)
-                performance = self.categorize_performance(percentile)
-
+                # A metric Kumü holds no benchmark for keeps its value and
+                # loses its verdict. It used to keep both: `calculate_percentile`
+                # answered 50 and `categorize_performance(50)` turned that into
+                # "Average performance", so a figure nobody had anything to
+                # compare against was reported as unremarkable.
                 category_analysis[metric] = {
                     "value": value,
                     "percentile": percentile,
-                    "performance": performance.value,
+                    "performance": (
+                        self.categorize_performance(percentile).value
+                        if percentile is not None else None
+                    ),
                     "vs_league_average": self._compare_to_average(value, metric, position, league),
                 }
             metrics_analysis[category] = category_analysis
 
         return {
             "position_specific_analysis": metrics_analysis,
+            # Named once for the whole section, so every percentile under it
+            # is read against the population that actually produced it rather
+            # than against the club the reader happens to be assessing for.
+            "percentile_population": population,
+            "percentile_basis": (
+                "Percentiles are measured against %s." % population
+                if population else
+                "No percentiles: Kumü holds no reference population for this "
+                "position."
+            ),
             "statistical_strengths": self._identify_statistical_strengths(metrics_analysis),
             "statistical_weaknesses": self._identify_statistical_weaknesses(metrics_analysis),
             "consistency_rating": self._calculate_consistency(
@@ -582,16 +713,18 @@ class ScoutingReportGenerator:
         }
 
     def _compare_to_average(self, value: float, metric: str, position: str, league: str) -> str:
-        """Compare value to league average (50th percentile)"""
-        if position not in self.benchmarks:
-            return "No benchmark available"
-        if league not in self.benchmarks[position]:
-            available = list(self.benchmarks[position].keys())
-            if not available:
-                return "No benchmark available"
-            league = available[0]
+        """Compare value to the reference population's median.
 
-        avg_value = self.benchmarks[position][league].get(metric, {}).get(50, 0)
+        Shares `percentile_population` with the percentiles above so the two
+        cannot disagree about which population they mean - and so the
+        substitution is made in one place, deterministically, instead of by
+        whichever key `list(...)` happened to yield first.
+        """
+        population = self.percentile_population(position, league)
+        if population is None:
+            return "No benchmark available"
+
+        avg_value = self.benchmarks[position][population].get(metric, {}).get(50, 0)
         if avg_value == 0:
             return "No benchmark available"
 
@@ -611,6 +744,8 @@ class ScoutingReportGenerator:
         strengths = []
         for category, metrics in metrics_analysis.items():
             for metric, analysis in metrics.items():
+                if analysis["percentile"] is None:
+                    continue
                 if analysis["percentile"] >= 75:
                     strengths.append(
                         f"{metric.replace('_', ' ').title()}: {analysis['performance']} ({analysis['percentile']}th percentile)"
@@ -622,6 +757,12 @@ class ScoutingReportGenerator:
         weaknesses = []
         for category, metrics in metrics_analysis.items():
             for metric, analysis in metrics.items():
+                # An unbenchmarked metric is not a weakness. With the old
+                # default of 50 it never reached this line; with None it
+                # would have raised, which is the better failure but still
+                # not the right answer.
+                if analysis["percentile"] is None:
+                    continue
                 if analysis["percentile"] < 40:
                     weaknesses.append(
                         f"{metric.replace('_', ' ').title()}: {analysis['performance']} ({analysis['percentile']}th percentile)"
@@ -1974,6 +2115,13 @@ class ScoutingReportGenerator:
         from the stand-in index and reported 100% of budget - a real
         calculation on an invented fee, which reads as a measured verdict
         rather than as the absence it is.
+
+        The ratio has two halves and only the fee was guarded. A club loaded
+        from a match feed has no budget, and `else 0` turned that into 0% and
+        "Low Risk": the safest-looking card on the page, produced by knowing
+        nothing. It then entered the overall average and pulled it down, so
+        Brisbane Roar - whose finances Kumü has never seen - read as the
+        lower-risk signing. An absence must not be the favourable answer.
         """
         if not self._can_price(player_data):
             return {
@@ -1983,8 +2131,22 @@ class ScoutingReportGenerator:
                 "level": None,
                 "budget_impact": None,
                 "mitigation_strategies": [],
-                "basis": "No financial risk: there is no fee to weigh against "
-                         "the budget, supplied or derived.",
+                "basis": "Not assessed: there is no fee to weigh against the "
+                         "budget, supplied or derived.",
+            }
+
+        if not self._has_budget(team_data):
+            return {
+                "risk_level": None,
+                "risk_description": None,
+                "score": None,
+                "level": None,
+                "budget_impact": None,
+                "mitigation_strategies": [],
+                "basis": "Not assessed: %s was loaded from a source that "
+                         "records matches, not finances, so there is no "
+                         "budget for the fee to be a share of."
+                         % (team_data.get("name") or "this club"),
             }
 
         total_investment = self._calculate_total_package(
@@ -1993,7 +2155,7 @@ class ScoutingReportGenerator:
             self._market_value(player_data),
         )
 
-        budget_percentage = (total_investment / team_data["budget"]) * 100 if team_data.get("budget") else 0
+        budget_percentage = (total_investment / team_data["budget"]) * 100
 
         if budget_percentage < 30:
             risk_level = "Low"
@@ -2026,6 +2188,11 @@ class ScoutingReportGenerator:
                 ]
                 if risk_level in ["High", "Very High"]
                 else []
+            ),
+            "basis": (
+                "A four-year package of %s against a declared budget of %s."
+                % (self._fmt_money(total_investment),
+                   self._fmt_money(team_data["budget"]))
             ),
         }
 
@@ -2236,11 +2403,18 @@ class ScoutingReportGenerator:
         # Sub-assessments historically used inconsistent key names
         # (e.g. injury_risk -> risk_score/risk_level, financial_risk -> risk_level only),
         # which broke consumers expecting score/level and excluded them from the average.
+        #
+        # The default is None, not 0. A sub-risk that reports neither key is
+        # one Kumü has nothing to say about, and zero is the one answer that
+        # would quietly improve the overall figure.
         for rf in risk_factors.values():
             if "score" not in rf:
-                rf["score"] = rf.get("risk_score", 0)
+                rf["score"] = rf.get("risk_score")
             if "level" not in rf:
-                rf["level"] = rf.get("risk_level", self._categorize_risk(rf["score"]))
+                rf["level"] = rf.get("risk_level") or (
+                    self._categorize_risk(rf["score"])
+                    if rf["score"] is not None else None
+                )
 
         # Average only the sub-risks that were actually assessed.
         #
@@ -2939,6 +3113,22 @@ class ScoutingReportGenerator:
             or [{"rating": 7.0, "goals": 0, "assists": 0}] * 5,
         }
 
+    # The sections a complete report carries, named rather than counted.
+    # Four tests asserted `len(report) == 9` and all four broke the day an
+    # envelope key was added beside the sections - a count cannot tell a new
+    # section from a new field, so it reports the wrong thing either way.
+    SECTIONS = (
+        "report_metadata",
+        "executive_summary",
+        "statistical_overview",
+        "tactical_analysis",
+        "physical_profile",
+        "market_analysis",
+        "comparison_analysis",
+        "risk_assessment",
+        "negotiation_strategy",
+    )
+
     def generate_full_report(self, player_data: Dict, team_data: Dict, org_ids=None) -> Dict:
         """Generate complete scouting report"""
 
@@ -2972,8 +3162,68 @@ class ScoutingReportGenerator:
                 player_data, team_data, market_analysis
             ),
         }
+        report["source_notes"] = self._source_notes(player_data, team_data)
 
         return report
+
+    # Metrics that only exist when the feed carries them. A position judged on
+    # duels it has no record of scores low for a reason the reader deserves.
+    UNRECORDED_WHEN_ABSENT = (
+        ("aerial duels", ("defensive", "aerial_duels_won_per_90")),
+        ("blocks", ("defensive", "blocks_per_90")),
+    )
+
+    def _source_notes(self, player_data: Dict, team_data: Dict) -> List[str]:
+        """What this source does not carry, for this player and this club.
+
+        The interface used to state four such caveats as fixed prose, printed
+        on every report whatever it contained. One of them said age was not
+        carried, directly above a finding that read "Age 22, outside the usual
+        peak window" - the page contradicting itself because the sentence was
+        written once and the finding was derived each time.
+
+        A caveat that is always true is not a caveat; it is decoration, and a
+        reader learns to skip it. These are produced from the same accessors
+        the sections use, so a note appears only where the gap is real.
+        """
+        notes: List[str] = []
+
+        if not self._has_age(player_data) or self._age(player_data) == self.ASSUMED_AGE:
+            notes.append(
+                "Age is not carried for this player, so no age-dependent "
+                "judgement is made."
+            )
+
+        if not self._has_market_value(player_data) and self._can_price(player_data):
+            notes.append(
+                "No market value was supplied, so the figures here are "
+                "estimated from performance."
+            )
+
+        if not self._has_budget(team_data):
+            notes.append(
+                "%s carries no budget, so nothing is expressed as a share of "
+                "what the club can spend." % (team_data.get("name") or "This club")
+            )
+
+        if team_data.get("playing_style") or team_data.get("expected_index"):
+            notes.append(
+                "This club's playing style and expected level are declared "
+                "judgements, replaced as data arrives."
+            )
+
+        metrics = player_data.get("metrics") or {}
+        missing = [
+            label for label, (category, metric) in self.UNRECORDED_WHEN_ABSENT
+            if (metrics.get(category) or {}).get(metric) is None
+        ]
+        if missing:
+            notes.append(
+                "Roles that rely on %s score low because this source does not "
+                "record them." % " or ".join(missing)
+            )
+
+        return notes
 
 
 # Example usage

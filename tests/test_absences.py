@@ -86,7 +86,9 @@ class ASectionSurvivesAnAbsentIndex(unittest.TestCase):
 
     def test_the_whole_report_generates(self):
         report = self.g.generate_full_report(player(), CLUB)
-        self.assertEqual(len(report), 9, "every section must still be present")
+        self.assertEqual(
+            set(ScoutingReportGenerator.SECTIONS) - set(report), set(),
+            "every section must still be present")
 
     def test_market_analysis_does_not_subscript_a_missing_index(self):
         self.g.generate_market_analysis(player(), CLUB)

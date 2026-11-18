@@ -181,7 +181,9 @@ class TheReportScoresWhatItWasGiven(unittest.TestCase):
                 "playing_style": {"possession": 0.5,
                                   "pressing_intensity": 0.5}}
         report = self.g.generate_full_report(player(RATES_ONLY), club)
-        self.assertEqual(len(report), 9)
+        self.assertEqual(
+            set(ScoutingReportGenerator.SECTIONS) - set(report), set(),
+            "every section must still be present")
 
 
 if __name__ == "__main__":

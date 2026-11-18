@@ -584,13 +584,19 @@ class PDFReportGenerator:
         recommendation = data.get("recommendation", "N/A")
         action = data.get("action", "N/A")
         match_score = data.get("match_score", 0)
-        percentile = data.get("overall_percentile", 0)
+        # None, not 0, when no population could place the player. `.get` with
+        # a default does not cover it: the key is present and holds None, and
+        # ordinal(None) would print a percentile for a ranking that was never
+        # made.
+        percentile = data.get("overall_percentile")
 
         summary_data = [
             ["Recommendation:", recommendation],
             ["Action:", action],
             ["Match Score:", f"{match_score:.1f}%"],
-            ["Overall Percentile:", ordinal(percentile)],
+            ["Overall Percentile:",
+             ordinal(percentile) if isinstance(percentile, (int, float))
+             else "not established"],
         ]
 
         summary_table = Table(summary_data, colWidths=[2 * inch, 4 * inch])
