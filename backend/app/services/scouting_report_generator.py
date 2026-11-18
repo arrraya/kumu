@@ -769,40 +769,108 @@ class ScoutingReportGenerator:
                     )
         return weaknesses[:3]  # Top 3 weaknesses
 
-    def _calculate_consistency(self, performance_history: List[Dict]) -> Dict:
-        """Calculate performance consistency"""
-        if len(performance_history) < 5:
-            return {"rating": "Insufficient data", "score": 0}
+    # Below these, there is nothing to say. Named because both figures used
+    # to answer anyway, with a number that looked like a measurement.
+    MIN_MATCHES_FOR_CONSISTENCY = 5
+    MIN_MATCHES_FOR_TRAJECTORY = 3
 
-        ratings = [p.get("rating", 0) for p in performance_history[-10:]]
-        std_dev = np.std(ratings)
+    @staticmethod
+    def _ratings(performance_history: List[Dict]) -> List[float]:
+        """The ratings a history actually carries.
+
+        It used to read `p.get("rating", 0)`, so a match with no rating
+        entered the arithmetic as nought. In the consistency figure that
+        inflated the spread and reported a steady player as Inconsistent;
+        in the trajectory it dragged the regression down and reported him
+        as Declining. Both are confident verdicts produced by a gap in the
+        log, and Declining is the worse of the two because nothing about it
+        looks like a default.
+        """
+        salida = []
+        for match in performance_history or []:
+            value = match.get("rating")
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                salida.append(float(value))
+        return salida
+
+    def _calculate_consistency(self, performance_history: List[Dict]) -> Dict:
+        """How steady the player's ratings are, or nothing.
+
+        `{"rating": "Insufficient data", "score": 0}` put the words and the
+        number in contradiction: the page read "Insufficient data" above
+        "Score: 0/100", which is the score of a maximally erratic player.
+        Eighty-five of the hundred and one players loaded sit below the gate,
+        so this was the common case, not the edge one.
+        """
+        ratings = self._ratings(performance_history)
+        if len(ratings) < self.MIN_MATCHES_FOR_CONSISTENCY:
+            return {
+                "rating": None,
+                "score": None,
+                "basis": (
+                    "Not assessed: %d rated appearance%s, and consistency "
+                    "needs %d to mean anything."
+                    % (len(ratings), "" if len(ratings) == 1 else "s",
+                       self.MIN_MATCHES_FOR_CONSISTENCY)
+                ),
+            }
+
+        considered = ratings[-10:]
+        std_dev = float(np.std(considered))
 
         if std_dev < 0.3:
-            return {"rating": "Very Consistent", "score": 90}
+            rating, score = "Very Consistent", 90
         elif std_dev < 0.5:
-            return {"rating": "Consistent", "score": 75}
+            rating, score = "Consistent", 75
         elif std_dev < 0.8:
-            return {"rating": "Moderately Consistent", "score": 60}
+            rating, score = "Moderately Consistent", 60
         else:
-            return {"rating": "Inconsistent", "score": 40}
+            rating, score = "Inconsistent", 40
+
+        return {
+            "rating": rating,
+            "score": score,
+            "basis": ("Spread of %.2f across %d rated appearances."
+                      % (std_dev, len(considered))),
+        }
 
     def _analyze_form_trajectory(self, performance_history: List[Dict]) -> Dict:
-        """Analyze recent form trajectory"""
-        if len(performance_history) < 3:
-            return {"trend": "Insufficient data", "direction": "neutral"}
+        """Which way recent form is going, or nothing.
 
-        recent_ratings = [p.get("rating", 0) for p in performance_history[-5:]]
+        "Insufficient data" came back with `direction: "neutral"` and no
+        slope at all - a verdict beside the statement that there was no
+        verdict, and a missing key the interface typed as a number.
+        """
+        ratings = self._ratings(performance_history)
+        if len(ratings) < self.MIN_MATCHES_FOR_TRAJECTORY:
+            return {
+                "trend": None,
+                "direction": None,
+                "slope": None,
+                "basis": (
+                    "Not assessed: %d rated appearance%s, and a trend needs "
+                    "%d." % (len(ratings), "" if len(ratings) == 1 else "s",
+                             self.MIN_MATCHES_FOR_TRAJECTORY)
+                ),
+            }
 
-        # Simple linear regression for trend
-        x = np.arange(len(recent_ratings))
-        slope = np.polyfit(x, recent_ratings, 1)[0]
+        recent = ratings[-5:]
+        slope = float(np.polyfit(np.arange(len(recent)), recent, 1)[0])
 
         if slope > 0.1:
-            return {"trend": "Improving", "direction": "positive", "slope": slope}
+            trend, direction = "Improving", "positive"
         elif slope < -0.1:
-            return {"trend": "Declining", "direction": "negative", "slope": slope}
+            trend, direction = "Declining", "negative"
         else:
-            return {"trend": "Stable", "direction": "neutral", "slope": slope}
+            trend, direction = "Stable", "neutral"
+
+        return {
+            "trend": trend,
+            "direction": direction,
+            "slope": slope,
+            "basis": ("Fitted over the last %d rated appearances."
+                      % len(recent)),
+        }
 
     def generate_tactical_analysis(
         self, player_data: Dict, team_data: Dict, org_ids=None

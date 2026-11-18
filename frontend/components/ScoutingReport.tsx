@@ -50,8 +50,19 @@ interface ScoutingReportData {
     position_specific_analysis: any;
     statistical_strengths: string[];
     statistical_weaknesses: string[];
-    consistency_rating: { rating: string; score: number };
-    form_trajectory: { trend: string; direction: string; slope: number };
+    consistency_rating: {
+      rating: string | null;
+      score: number | null;
+      basis?: string | null;
+    };
+    form_trajectory: {
+      trend: string | null;
+      direction: string | null;
+      slope?: number | null;
+      basis?: string | null;
+    };
+    percentile_population?: string | null;
+    percentile_basis?: string | null;
   };
   tactical_analysis: {
     formation_compatibility: {
@@ -487,15 +498,53 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
         </div>
 
         <div className="grid grid-cols-2 gap-4">
+          {/* "Insufficient data" used to appear above "Score: 0/100", which
+              is the score of a maximally erratic player, and "Direction:
+              neutral", which is a verdict. Eighty-five of a hundred and one
+              players sit below the gate, so this was the ordinary case. */}
           <div className="bg-paper-sunk p-4 rounded-sm">
             <div className="text-sm text-ink-soft">Consistency</div>
-            <div className="text-lg font-semibold">{report.statistical_overview.consistency_rating.rating}</div>
-            <div className="text-sm text-ink-faint">Score: {report.statistical_overview.consistency_rating.score}/100</div>
+            {report.statistical_overview.consistency_rating.rating ? (
+              <>
+                <div className="text-lg font-semibold">
+                  {report.statistical_overview.consistency_rating.rating}
+                </div>
+                <div className="text-sm text-ink-faint">
+                  Score: {report.statistical_overview.consistency_rating.score}/100
+                </div>
+              </>
+            ) : (
+              <div className="text-lg font-semibold text-ink-soft">
+                Not assessed
+              </div>
+            )}
+            {report.statistical_overview.consistency_rating.basis && (
+              <p className="text-xs text-ink-soft mt-2 leading-snug">
+                {report.statistical_overview.consistency_rating.basis}
+              </p>
+            )}
           </div>
           <div className="bg-paper-sunk p-4 rounded-sm">
             <div className="text-sm text-ink-soft">Form Trajectory</div>
-            <div className="text-lg font-semibold">{report.statistical_overview.form_trajectory.trend}</div>
-            <div className="text-sm text-ink-faint">Direction: {report.statistical_overview.form_trajectory.direction}</div>
+            {report.statistical_overview.form_trajectory.trend ? (
+              <>
+                <div className="text-lg font-semibold">
+                  {report.statistical_overview.form_trajectory.trend}
+                </div>
+                <div className="text-sm text-ink-faint">
+                  Direction: {report.statistical_overview.form_trajectory.direction}
+                </div>
+              </>
+            ) : (
+              <div className="text-lg font-semibold text-ink-soft">
+                Not assessed
+              </div>
+            )}
+            {report.statistical_overview.form_trajectory.basis && (
+              <p className="text-xs text-ink-soft mt-2 leading-snug">
+                {report.statistical_overview.form_trajectory.basis}
+              </p>
+            )}
           </div>
         </div>
       </div>
