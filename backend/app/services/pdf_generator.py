@@ -908,7 +908,7 @@ class PDFReportGenerator:
             percentile_text = f"{ordinal(percentile)} percentile" if percentile is not None else "n/a"
             elements.append(
                 Paragraph(
-                    f"<b>League standing:</b> {percentile_text} — "
+                    f"<b>Standing among peers:</b> {percentile_text} — "
                     f"{league.get('vs_top_performers', '')}. {league.get('statistical_rank', '')}",
                     self.styles["BodyText"],
                 )

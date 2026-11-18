@@ -138,7 +138,10 @@ interface ScoutingReportData {
       position_upgrade: boolean;
     };
     league_comparison: {
-      league_percentile: number;
+      positional_percentile?: number | null;
+      league_percentile: number | null;
+      peer_count?: number | null;
+      basis?: string | null;
       vs_top_performers: string;
       statistical_rank: string;
     };
@@ -964,11 +967,25 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
           )}
          </div>
          
+         {/* Was "League Standing" over "League Percentile", for a query
+             with no league filter in it — the third place the same claim
+             was made. The honest sentence was already underneath:
+             "Ranks ~4 of 8 STs in database". */}
          <div className="bg-field-wash p-6 rounded-sm">
-           <h4 className="font-medium text-ink mb-4">League Standing</h4>
+           <h4 className="font-medium text-ink mb-4">Standing among peers</h4>
            <div className="text-center mb-4">
-             <div className="text-3xl font-bold text-field">{ordinal(report.comparison_analysis.league_comparison.league_percentile)}</div>
-             <div className="text-sm text-ink-soft mt-1">League Percentile</div>
+             {report.comparison_analysis.league_comparison.league_percentile !== null ? (
+               <>
+                 <div className="text-3xl font-bold text-field">
+                   {ordinal(report.comparison_analysis.league_comparison.league_percentile)}
+                 </div>
+                 <div className="text-sm text-ink-soft mt-1">
+                   percentile among same-position players
+                 </div>
+               </>
+             ) : (
+               <div className="text-lg font-semibold text-ink-soft">Not assessed</div>
+             )}
            </div>
            <div className="bg-paper-card p-3 rounded text-center">
              <span className="text-field-dark font-medium">{report.comparison_analysis.league_comparison.statistical_rank}</span>

@@ -372,8 +372,41 @@ class ScoutingReportGenerator:
         below = sum(1 for v in values if v < float(value))
         return round(below / len(values) * 100, 1)
 
-    def _positional_percentile(self, player_data: Dict,
-                               org_ids=None) -> Optional[Tuple[float, int]]:
+    def _index_peers(self, position: str, org_ids=None, cache=None) -> List[float]:
+        """Every same-position index the caller may read, fetched once.
+
+        Two sections want exactly this list - the executive percentile and
+        the squad comparison - and each issued the identical statement, so
+        one report crossed the continent twice for an answer it already
+        held. Measured from Santiago that was 0.47 s of the 4.25 s; on the
+        server beside the database it is cheap and still pointless.
+
+        The cache is created per report and passed down rather than kept on
+        the instance. `report_generator` is a module-level singleton shared
+        by every request, so a cache living on it would hand one tenant's
+        peers to the next and would go stale the moment anybody ingested.
+        """
+        clave = (position, tuple(sorted(org_ids or ())))
+        if cache is not None and clave in cache:
+            return cache[clave]
+
+        rows = self._query_db(
+            """
+            SELECT (performance_index->>'value')::float AS v
+            FROM players
+            WHERE position = :position AND (performance_index->>'value') IS NOT NULL
+              AND organization_id IN :org_ids
+            """,
+            {"position": position},
+            org_ids,
+        )
+        values = [float(r[0]) for r in rows if r[0] is not None]
+        if cache is not None:
+            cache[clave] = values
+        return values
+
+    def _positional_percentile(self, player_data: Dict, org_ids=None,
+                               cache=None) -> Optional[Tuple[float, int]]:
         """The player's index among same-position peers, and how many there were.
 
         The size travels with the figure because the report has to state it.
@@ -389,23 +422,14 @@ class ScoutingReportGenerator:
         if not position or not isinstance(index, (int, float)):
             return None
 
-        rows = self._query_db(
-            """
-            SELECT (performance_index->>'value')::float AS v
-            FROM players
-            WHERE position = :position AND (performance_index->>'value') IS NOT NULL
-              AND organization_id IN :org_ids
-            """,
-            {"position": position},
-            org_ids,
-        )
-        values = [float(r[0]) for r in rows if r[0] is not None]
+        values = self._index_peers(position, org_ids, cache)
         if len(values) < 5:
             return None
         rank = round(sum(1 for v in values if v < float(index)) / len(values) * 100, 1)
         return rank, len(values)
 
-    def generate_executive_summary(self, player_data: Dict, team_data: Dict, org_ids=None) -> Dict:
+    def generate_executive_summary(self, player_data: Dict, team_data: Dict,
+                                   org_ids=None, cache=None) -> Dict:
         """Generate executive summary with key findings"""
         unrateable = self.goalkeeping_basis(player_data)
         if unrateable:
@@ -451,7 +475,7 @@ class ScoutingReportGenerator:
         metric_percentile_average = (
             float(np.mean(percentile_values)) if percentile_values else None
         )
-        ranked = self._positional_percentile(player_data, org_ids)
+        ranked = self._positional_percentile(player_data, org_ids, cache)
         peers = ranked[1] if ranked is not None else None
         population = self.percentile_population(
             player_data["position"], team_data["league"])
@@ -2264,7 +2288,8 @@ class ScoutingReportGenerator:
             ),
         }
 
-    def generate_comparison_analysis(self, player_data: Dict, team_data: Dict, org_ids=None) -> Dict:
+    def generate_comparison_analysis(self, player_data: Dict, team_data: Dict,
+                                     org_ids=None, cache=None) -> Dict:
         """Generate comparison with current squad and league peers"""
         position = player_data["position"]
 
@@ -2272,7 +2297,8 @@ class ScoutingReportGenerator:
         squad_comparison = self._compare_with_squad(player_data, team_data, org_ids)
 
         # Compare with league peers
-        league_comparison = self._compare_with_league_peers(player_data, team_data, org_ids)
+        league_comparison = self._compare_with_league_peers(
+            player_data, team_data, org_ids, cache)
 
         # Historical comparison
         historical_comparison = self._historical_performance_comparison(player_data)
@@ -2380,29 +2406,36 @@ class ScoutingReportGenerator:
             "basis": f"{basis} ({len(peers)} compared)",
         }
 
-    def _compare_with_league_peers(self, player_data: Dict, team_data: Dict, org_ids=None) -> Dict:
-        """Real percentile of the player's index among same-position players."""
+    def _compare_with_league_peers(self, player_data: Dict, team_data: Dict,
+                                   org_ids=None, cache=None) -> Dict:
+        """Where the player sits among the same-position players Kumü holds.
+
+        It was called `league_percentile`, printed under "League Standing"
+        and labelled "League Percentile", and the query it comes from has no
+        league filter in it - the third place the same mistake was made.
+        The honest sentence was already sitting beside it: "Ranks ~4 of 8
+        STs in database".
+
+        `league_percentile` stays in the payload beside the new key so an
+        older client keeps working, and carries the same number: the figure
+        was never wrong, only its name.
+        """
         position = player_data.get("position") or ""
         player_idx = float((player_data.get("performance_index") or {}).get("value", 0) or 0)
 
-        rows = self._query_db(
-            """
-            SELECT (performance_index->>'value')::float AS v
-            FROM players
-            WHERE position = :position AND (performance_index->>'value') IS NOT NULL
-              AND organization_id IN :org_ids
-            """,
-            {"position": position},
-            org_ids,
-        )
-        values = [float(r[0]) for r in rows if r[0] is not None]
+        values = self._index_peers(position, org_ids, cache)
 
         if len(values) < 5:
             return {
-                "league_percentile": None,
+                "positional_percentile": None,
+                "league_percentile": None,  # nombre antiguo, misma cifra
+                "peer_count": len(values),
                 "vs_top_performers": "Insufficient peer data",
                 "statistical_rank": "n/a",
                 "elite_potential": False,
+                "basis": ("Not assessed: %d same-position player%s in the "
+                          "database, and a ranking needs 5."
+                          % (len(values), "" if len(values) == 1 else "s")),
             }
 
         below = sum(1 for v in values if v < player_idx)
@@ -2410,12 +2443,17 @@ class ScoutingReportGenerator:
         rank = max(1, int(round(len(values) * (100 - percentile) / 100)))
 
         return {
-            "league_percentile": percentile,
+            "positional_percentile": percentile,
+            "league_percentile": percentile,  # nombre antiguo, misma cifra
+            "peer_count": len(values),
+            "basis": ("Ranked against the %d same-position players Kumü "
+                      "holds, across every organisation this report may "
+                      "read. Not a league table." % len(values)),
             "vs_top_performers": (
                 "Top tier" if percentile >= 80
                 else "Upper mid-tier" if percentile >= 60 else "Mid-tier"
             ),
-            "statistical_rank": f"Ranks ~{rank} of {len(values)} {position}s in database",
+            "statistical_rank": f"Ranks ~{rank} of {len(values)} {position}s in database",  # noqa: E501
             "elite_potential": percentile >= 75,
         }
 
@@ -3205,6 +3243,13 @@ class ScoutingReportGenerator:
             # Simple match score calculation
             player_data["match_score"] = 75.0  # Placeholder
 
+        # One cache for this report, created here and passed down. It holds
+        # the same-position index list, which two sections ask for and which
+        # used to be fetched twice. It is deliberately a local: the generator
+        # is a module-level singleton shared by every request, so anything
+        # cached on `self` would outlive the report and cross tenants.
+        cache: Dict = {}
+
         # Computed once and reused: the negotiation strategy needs the same
         # market analysis the report shows, and running it twice repeated every
         # comparables query for no benefit.
@@ -3219,12 +3264,14 @@ class ScoutingReportGenerator:
                 "team_name": team_data["name"],
                 "team_id": team_data["id"],
             },
-            "executive_summary": self.generate_executive_summary(player_data, team_data, org_ids),
+            "executive_summary": self.generate_executive_summary(
+                player_data, team_data, org_ids, cache),
             "statistical_overview": self.generate_statistical_overview(player_data, team_data),
             "tactical_analysis": self.generate_tactical_analysis(player_data, team_data, org_ids),
             "physical_profile": self.generate_physical_profile(player_data),
             "market_analysis": market_analysis,
-            "comparison_analysis": self.generate_comparison_analysis(player_data, team_data, org_ids),
+            "comparison_analysis": self.generate_comparison_analysis(
+                player_data, team_data, org_ids, cache),
             "risk_assessment": self.generate_risk_assessment(player_data, team_data),
             "negotiation_strategy": self.generate_negotiation_strategy(
                 player_data, team_data, market_analysis

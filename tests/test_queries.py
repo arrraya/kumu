@@ -172,9 +172,15 @@ class EveryQueryTheReportIssuesExecutes(QueriesRunAgainstRealRows):
 
         from app.db.database import engine
 
+        # Named, not a lambda. `event.remove` matches on identity, so
+        # registering one callable and removing another leaves the listener
+        # attached to a shared engine for the rest of the run.
         rotas = []
-        event.listen(engine, "handle_error",
-                     lambda c: rotas.append(str(c.original_exception)[:80]))
+
+        def fallo(contexto):
+            rotas.append(str(contexto.original_exception)[:80])
+
+        event.listen(engine, "handle_error", fallo)
         try:
             with engine.connect() as conn:
                 try:
@@ -184,7 +190,7 @@ class EveryQueryTheReportIssuesExecutes(QueriesRunAgainstRealRows):
                 except Exception:
                     pass
         finally:
-            event.remove(engine, "handle_error", rotas.append)
+            event.remove(engine, "handle_error", fallo)
         self.assertTrue(rotas, "the listener did not fire on invalid SQL, so "
                                "the tests below prove nothing")
 
