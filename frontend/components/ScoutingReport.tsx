@@ -598,17 +598,36 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
                 </div>
               );
             }
+            // A figure measured over part of the question is marked where
+            // the figure is, not in the paragraph under it. 94.3 read as a
+            // near-perfect fit while being a score on one of two declared
+            // demands, covering 16% of what the club asks — and the sentence
+            // saying so sat below the number, where a reader scanning the
+            // card never reached it.
+            const share = s.demand_share;
+            const partial = share !== null && share !== undefined && share < 1;
             return (
               <div className="bg-field-wash p-6">
-                <h4 className="label mb-3">Style fit</h4>
-                <div className="figure-lg">{s.compatibility_score.toFixed(1)}</div>
+                <h4 className="label mb-3">
+                  Style fit{partial ? ' — partial' : ''}
+                </h4>
+                <div className="flex items-baseline gap-3 flex-wrap">
+                  <span className={partial ? 'figure-lg is-estimated' : 'figure-lg'}>
+                    {s.compatibility_score.toFixed(1)}
+                  </span>
+                  {partial && (
+                    <span className="label">
+                      over {Math.round(share * 100)}% of the demand
+                    </span>
+                  )}
+                </div>
                 <div className="text-sm text-ink-soft mt-1">
                   out of 100 — the same scale at every club
                 </div>
-                {s.demand_share !== null && (
+                {share !== null && share !== undefined && (
                   <div className="mt-3 pt-3 border-t border-rule">
                     <div className="label">
-                      Covers {Math.round(s.demand_share * 100)}% of this club's declared style
+                      Covers {Math.round(share * 100)}% of this club's declared style
                     </div>
                   </div>
                 )}
@@ -1046,12 +1065,45 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
      <div className="bg-paper-card border border-rule rounded-sm p-6">
        <h3 className="text-xl font-semibold mb-6">Negotiation Strategy</h3>
        
+       {/* Three prices that mean three things. There used to be a separate
+           "Maximum Offer" and "Walk-away Price" seven million apart, which is
+           a gap where a buyer would neither bid nor leave: they are one number
+           seen from either side. The middle tile is now the target, which is
+           where these settle.
+
+           These lead the section. A box reading "negotiation position — not
+           assessed" sat above them and read as a contradiction: a declared
+           absence directly over three precise figures. The figures are not
+           what was absent — they come from the valuation, which Kumü has —
+           so they go first, and the absence below explains what is missing
+           to calibrate them rather than appearing to deny them. */}
+       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
+         <div className="bg-paper-sunk p-4 text-center">
+           <div className="label">Opening offer</div>
+           <div className="figure mt-2">{formatCurrency(report.negotiation_strategy.offer_strategy.opening_offer)}</div>
+         </div>
+         <div className="bg-paper-sunk p-4 text-center">
+           <div className="label">Target</div>
+           <div className="figure mt-2">{formatCurrency(report.negotiation_strategy.offer_strategy.target_offer)}</div>
+         </div>
+         <div className="bg-flag-wash p-4 text-center">
+           <div className="label text-flag">Maximum — and walk-away</div>
+           <div className="figure mt-2 text-flag">{formatCurrency(report.negotiation_strategy.offer_strategy.maximum_offer)}</div>
+         </div>
+       </div>
+       <p className="mb-6 max-w-read text-sm text-ink-soft">
+         {report.negotiation_strategy.offer_strategy.basis ??
+           'Derived from the assessed value of the player.'}
+         {report.negotiation_strategy.negotiation_position.strength === null &&
+           ' They are not adjusted for leverage, because none could be read.'}
+       </p>
+
        {/* The score was 50 for every player in the database and the label
            read "Weak", because the scale only went up from a base of 50 and
            every input it reads is absent. A constant is not a position. */}
        {report.negotiation_strategy.negotiation_position.strength === null ? (
          <div className="mb-6 border border-dashed border-rule-strong p-4">
-           <h4 className="label mb-2">Negotiation position — not assessed</h4>
+           <h4 className="label mb-2">What would sharpen these figures</h4>
            <p className="max-w-read text-sm text-ink-soft">
              {report.negotiation_strategy.negotiation_position.basis ??
                'This source carries none of the facts that decide who holds the cards.'}
@@ -1074,31 +1126,6 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
              </p>
            )}
          </div>
-       )}
-
-       {/* Three prices that mean three things. There used to be a separate
-           "Maximum Offer" and "Walk-away Price" seven million apart, which is
-           a gap where a buyer would neither bid nor leave: they are one number
-           seen from either side. The middle tile is now the target, which is
-           where these settle. */}
-       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
-         <div className="bg-paper-sunk p-4 text-center">
-           <div className="label">Opening offer</div>
-           <div className="figure mt-2">{formatCurrency(report.negotiation_strategy.offer_strategy.opening_offer)}</div>
-         </div>
-         <div className="bg-paper-sunk p-4 text-center">
-           <div className="label">Target</div>
-           <div className="figure mt-2">{formatCurrency(report.negotiation_strategy.offer_strategy.target_offer)}</div>
-         </div>
-         <div className="bg-flag-wash p-4 text-center">
-           <div className="label text-flag">Maximum — and walk-away</div>
-           <div className="figure mt-2 text-flag">{formatCurrency(report.negotiation_strategy.offer_strategy.maximum_offer)}</div>
-         </div>
-       </div>
-       {report.negotiation_strategy.offer_strategy.basis && (
-         <p className="mb-6 max-w-read text-sm text-ink-soft">
-           {report.negotiation_strategy.offer_strategy.basis}
-         </p>
        )}
 
        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
