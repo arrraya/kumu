@@ -106,7 +106,11 @@ async def generate_report(
         "name": team.name,
         "league": getattr(team, "league", None),
         "country": getattr(team, "country", None),
-        "budget": getattr(team, "budget", 0) or 0,
+        # None, not 0. `or 0` turned "Kumu has never seen this club's
+        # finances" into "this club has no money", and zero is a number the
+        # report will happily divide by and reason about. The generator's
+        # guards read absence, so the honest value has to reach them.
+        "budget": getattr(team, "budget", None),
         "formation": getattr(team, "formation", None),
         "playing_style": getattr(team, "playing_style", None) or {},
         # Declared positional needs. The tactical section can now say whether
