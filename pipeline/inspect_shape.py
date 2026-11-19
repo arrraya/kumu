@@ -133,17 +133,28 @@ def perfilar(db, models, org_ids, player_id=None):
     print("  --- fuera de la base: %.2f s, que es lo que paga producción ---"
           % (total - en_base))
     stats = pstats.Stats(perfil)
-    stats.sort_stats("cumulative")
-    propio = [
-        (func, st) for func, st in stats.stats.items()
-        if ("/app/" in func[0] or "/backend/" in func[0])
-    ]
-    propio.sort(key=lambda kv: -kv[1][3])  # tiempo acumulado
-    print("  %8s %8s %6s  %s" % ("acum", "propio", "veces", "función"))
-    for (archivo, linea, nombre), (cc, nc, tt, ct, _) in propio[:12]:
-        corto = archivo.split("/app/")[-1] if "/app/" in archivo else archivo
-        print("  %7.3fs %7.3fs %6d  %s:%d %s"
-              % (ct, tt, nc, corto, linea, nombre))
+
+    def corto(archivo):
+        for marca in ("/app/", "/site-packages/", "/backend/"):
+            if marca in archivo:
+                return archivo.split(marca)[-1]
+        return archivo.rsplit("/", 1)[-1]
+
+    # By OWN time and across every frame, libraries included. Filtering to
+    # Kumü's own files showed twelve functions at 0.000s of own time, which
+    # says only that the cost is not in them - and says nothing at all about
+    # where it is.
+    todo = sorted(stats.stats.items(), key=lambda kv: -kv[1][2])
+    print("  %8s %8s %7s  %s" % ("propio", "acum", "veces", "función"))
+    for (archivo, linea, nombre), (cc, nc, tt, ct, _) in todo[:14]:
+        print("  %7.3fs %7.3fs %7d  %s:%d %s"
+              % (tt, ct, nc, corto(archivo), linea, nombre))
+
+    propias = sum(tt for (archivo, _, _), (_, _, tt, _, _) in stats.stats.items()
+                  if "/app/" in archivo or "/backend/" in archivo)
+    print()
+    print("  tiempo propio dentro de código de Kumü: %.3f s de %.2f s"
+          % (propias, total))
 
     repetidas = [(k, v) for k, v in gastos.items() if v["n"] > 1]
     if repetidas:
