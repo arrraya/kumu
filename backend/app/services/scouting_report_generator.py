@@ -2634,14 +2634,31 @@ class ScoutingReportGenerator:
         """Assess adaptation and integration risks"""
         risk_score = 0
         factors = []
+        unknowns = []
 
-        # League change
-        if player_data.get("current_league") != team_data["league"]:
+        # `players` has no league column. This read `player_data.get(
+        # "current_league")`, which was therefore None for every player in
+        # the database, and compared it to the club's league, which never
+        # is - so every report scored +25 and listed "Moving to new league",
+        # including a player assessed for the club he already plays for.
+        # K. Jelacic came out at 60% adaptation risk moving to Brisbane
+        # Roar, where he plays. A term that is the same for everyone
+        # carries no information, and this one was also false.
+        #
+        # The endpoint now supplies the league from the player's open squad
+        # spell, the same record `player_market` reads. Where there is none,
+        # the factor is not scored and the absence is stated.
+        origen = player_data.get("current_league")
+        if origen is None:
+            unknowns.append("the league he plays in now is not recorded")
+        elif origen != team_data.get("league"):
             risk_score += 25
             factors.append("Moving to new league")
 
-        # Cultural/language factors
-        if player_data.get("nationality") != team_data.get("country"):
+        nacionalidad = player_data.get("nationality")
+        if nacionalidad is None:
+            unknowns.append("his nationality is not recorded")
+        elif nacionalidad != team_data.get("country"):
             risk_score += 15
             factors.append("International transfer")
 
@@ -2670,6 +2687,10 @@ class ScoutingReportGenerator:
             "level": self._categorize_risk(risk_score),
             "factors": factors,
             "adaptation_period": "3-6 months" if risk_score > 40 else "1-3 months",
+            "basis": (
+                "Not counted, because %s." % " and ".join(unknowns)
+                if unknowns else None
+            ),
         }
 
     def _assess_age_risk(self, player_data: Dict) -> Dict:

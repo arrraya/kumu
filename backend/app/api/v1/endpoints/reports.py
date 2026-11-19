@@ -140,6 +140,13 @@ async def generate_report(
     # anchors are used when a league has enough client data, curation if not.
     from app.core import markets
 
+    # Where he plays now, read from his open squad spell. `players` has no
+    # league column, so the adaptation risk asked for one and got None for
+    # every player in the database - scoring a league change on all of them,
+    # including a player assessed for his own club.
+    origen = markets.player_origin(db, player.id)
+    player_data["current_league"] = (origen or {}).get("league")
+
     player_data["market_anchor"] = markets.anchor_for(
         markets.player_market(db, player.id), db)
     team_data["market_anchor"] = markets.anchor_for(

@@ -158,13 +158,13 @@ def anchor_for(market: Optional[str], db=None) -> Optional[Dict[str, Any]]:
     }
 
 
-def player_market(db, player_id) -> str:
-    """The market a player would be bought FROM: his current club's league.
+def player_origin(db, player_id) -> Optional[Dict[str, Any]]:
+    """Where a player plays now: his club's league, country and kind.
 
-    Read through the open squad spell, the same record that tracks transfers.
-    Players with no club spell — the national-team data — fall back to the
-    international market rather than being priced as if they played anywhere
-    in particular.
+    Read through the open squad spell, the same record that tracks
+    transfers. `players` has no league column of its own - which is worth
+    saying plainly, because the report asked for one anyway and got None
+    every time. See `_assess_adaptation_risk`.
     """
     from sqlalchemy import text
 
@@ -177,10 +177,23 @@ def player_market(db, player_id) -> str:
             LIMIT 1
         """), {"pid": int(player_id)}).fetchone()
     except Exception:  # noqa: BLE001
+        return None
+    if not row:
+        return None
+    return {"league": row[0], "country": row[1], "team_type": row[2]}
+
+
+def player_market(db, player_id) -> str:
+    """The market a player would be bought FROM: his current club's league.
+
+    Players with no club spell — the national-team data — fall back to the
+    international market rather than being priced as if they played anywhere
+    in particular.
+    """
+    origin = player_origin(db, player_id)
+    if not origin or origin["team_type"] == "national":
         return DEFAULT_MARKET
-    if not row or row[2] == "national":
-        return DEFAULT_MARKET
-    return market_of(row[0], row[1])
+    return market_of(origin["league"], origin["country"])
 
 
 # How demanding each league is, relative to the Premier League. A match rating
