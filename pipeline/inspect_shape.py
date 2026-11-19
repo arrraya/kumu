@@ -44,7 +44,7 @@ def seccion(titulo):
     print(BAR)
 
 
-def perfilar(db, models, org_ids):
+def perfilar(db, models, org_ids, player_id=None):
     """Time every query one report makes, grouped by statement."""
     from sqlalchemy import event
 
@@ -65,10 +65,17 @@ def perfilar(db, models, org_ids):
         gastos[clave]["n"] += 1
         gastos[clave]["s"] += time.perf_counter() - inicio
 
-    player = (db.query(models.Player)
-              .filter(models.Player.organization_id.in_(org_ids))
-              .filter(models.Player.performance_index.isnot(None))
-              .first())
+    consulta = (db.query(models.Player)
+                .filter(models.Player.organization_id.in_(org_ids))
+                .filter(models.Player.performance_index.isnot(None)))
+    if player_id:
+        consulta = consulta.filter(models.Player.id == player_id)
+    else:
+        # Otherwise it takes whatever the table returns first, which last
+        # time was "Volante Demo" from the test tenant: a profile of a
+        # player nobody will ever ask for.
+        consulta = consulta.filter(models.Player.organization_id != 2)
+    player = consulta.first()
     team = (db.query(models.Team)
             .filter(models.Team.organization_id.in_(org_ids))
             .filter((models.Team.team_type == "club")
@@ -89,11 +96,17 @@ def perfilar(db, models, org_ids):
         "spatial_profile": team.spatial_profile or {},
     }
 
+    import cProfile
+    import pstats
+
+    perfil = cProfile.Profile()
     event.listen(engine, "before_cursor_execute", antes)
     event.listen(engine, "after_cursor_execute", despues)
     comenzado = time.perf_counter()
     try:
+        perfil.enable()
         g.generate_full_report(player_data, team_data, org_ids)
+        perfil.disable()
     finally:
         total = time.perf_counter() - comenzado
         event.remove(engine, "before_cursor_execute", antes)
@@ -110,6 +123,27 @@ def perfilar(db, models, org_ids):
     print("  %-5s %7s %7s  %s" % ("veces", "total", "c/u", "consulta"))
     for clave, v in sorted(gastos.items(), key=lambda kv: -kv[1]["s"])[:12]:
         print("  %5d %6.2fs %6.3fs  %s" % (v["n"], v["s"], v["s"] / v["n"], clave))
+
+    # The part the deployed server actually pays. Its database sits beside
+    # it in Railway, where a round trip is sub-millisecond, so the seconds
+    # measured above are this laptop's distance to US West and not the
+    # endpoint's cost. Whatever is left over is Python, and that it does pay
+    # once per report a user asks for.
+    print()
+    print("  --- fuera de la base: %.2f s, que es lo que paga producción ---"
+          % (total - en_base))
+    stats = pstats.Stats(perfil)
+    stats.sort_stats("cumulative")
+    propio = [
+        (func, st) for func, st in stats.stats.items()
+        if ("/app/" in func[0] or "/backend/" in func[0])
+    ]
+    propio.sort(key=lambda kv: -kv[1][3])  # tiempo acumulado
+    print("  %8s %8s %6s  %s" % ("acum", "propio", "veces", "función"))
+    for (archivo, linea, nombre), (cc, nc, tt, ct, _) in propio[:12]:
+        corto = archivo.split("/app/")[-1] if "/app/" in archivo else archivo
+        print("  %7.3fs %7.3fs %6d  %s:%d %s"
+              % (ct, tt, nc, corto, linea, nombre))
 
     repetidas = [(k, v) for k, v in gastos.items() if v["n"] > 1]
     if repetidas:
@@ -182,6 +216,14 @@ def tipos(db, models):
 
 
 def main() -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--player", type=int, default=None,
+                        help="Perfilar este jugador; por defecto el primero "
+                             "que no sea del inquilino de prueba")
+    args = parser.parse_args()
+
     if not os.environ.get("DATABASE_URL"):
         print("Falta DATABASE_URL. Corre `source ~/.kumu_env` primero.",
               file=sys.stderr)
@@ -195,7 +237,7 @@ def main() -> int:
         org_ids = [o.id for o in db.query(models.Organization).all()]
 
         seccion("1. DÓNDE SE VAN LOS CUATRO SEGUNDOS")
-        perfilar(db, models, org_ids)
+        perfilar(db, models, org_ids, args.player)
 
         seccion("2. NOMBRES DE LIGA")
         ligas(db, models)
