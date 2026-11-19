@@ -1888,7 +1888,8 @@ class ScoutingReportGenerator:
 
         # The price comparison is made first and judged last: the verdict on
         # it needs the return, which is computed above.
-        value_assessment = self._assess_value(current_value, comparable_players)
+        value_assessment = self._assess_value(
+            current_value, comparable_players, player_data)
         value_assessment["recommendation"] = self._value_recommendation(
             value_assessment, roi_analysis)
 
@@ -2049,7 +2050,27 @@ class ScoutingReportGenerator:
             })
         return comparables
 
-    def _assess_value(self, current_value: float, comparable_players: List[Dict]) -> Dict:
+    @staticmethod
+    def _declared_price(datos: Optional[Dict]) -> bool:
+        """Whether this row's price came from outside Kumü.
+
+        `players.market_value` is a bare Float with no provenance. For the
+        public population `pipeline/load.py` computed it from the index -
+
+            base = 5_000_000 + (max(0.0, value - 50) ** 1.8) * 90_000
+
+        - and nothing in the row distinguishes that from a figure a client
+        supplied. The key below is the switch, and the column that would set
+        it does not exist yet: `players.market_value_source`, stamped by the
+        ingest when a record arrives carrying its own price. Until then this
+        is False for every row, which is the correct answer rather than a
+        placeholder - today no price in this database was put there by
+        anybody but Kumü.
+        """
+        return ((datos or {}).get("market_value_source") or "").lower() == "client"
+
+    def _assess_value(self, current_value: float, comparable_players: List[Dict],
+                      player_data: Optional[Dict] = None) -> Dict:
         """Assess if player represents good value against Kumü-valued peers.
 
         Not against transfers. Every comparable here is a row from Kumu's own
@@ -2059,6 +2080,37 @@ class ScoutingReportGenerator:
         panels below a caveat stating that no observed transfer fee enters any
         calculation. One of the two was wrong, and it was not the caveat.
         """
+        # Both sides of this comparison are Kumü's own estimate, produced
+        # from the performance index by one formula, and the peers are chosen
+        # by closest index. The ratio is therefore f(index) over f(the three
+        # nearest indices), which is one by construction. The only thing that
+        # ever made the figure interesting was comparing across markets - two
+        # different anchors - and that was the defect, not the signal: it
+        # reported an A-League winger as 95.4% below his peers.
+        #
+        # `derive_anchor` already refuses the public population's values for
+        # calibrating anchors, for this exact reason. The same objection
+        # applies here and nobody had made it.
+        if not (self._declared_price(player_data)
+                or any(self._declared_price(p) for p in comparable_players)):
+            return {
+                "assessment": "Not assessed",
+                "recommendation": None,
+                "value_ratio": None,
+                "vs_comparables": None,
+                "basis": (
+                    "Not assessed: every price on both sides of this "
+                    "comparison is Kumü's own estimate, derived from the "
+                    "performance index by the same formula, and the peers "
+                    "are the closest players by that same index. Comparing "
+                    "them measures the formula, not the player - the "
+                    "positional percentile above already says what this "
+                    "would. Supply a price for this player or for one of his "
+                    "positional peers and the comparison starts meaning "
+                    "something."
+                ),
+            }
+
         fees = [
             p["transfer_fee"] for p in comparable_players
             if isinstance(p.get("transfer_fee"), (int, float)) and p["transfer_fee"] > 0

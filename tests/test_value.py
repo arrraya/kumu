@@ -55,6 +55,9 @@ def clough(ancla=ANCLA_A_LEAGUE):
     }
 
 
+CLIENTE = {"market_value_source": "client"}
+
+
 def par(nombre, valor, indice, liga):
     """A row as `_query_db` returns it: name, club, value, index, league."""
     return (nombre, "un club", valor, {"value": indice}, liga)
@@ -104,7 +107,7 @@ class PeersArePricedOnTheSameScale(unittest.TestCase):
         g = self.generador(solo_extranjeros)
         pares = g._find_comparable_transfers(clough())
         self.assertEqual(pares, [])
-        valoracion = g._assess_value(822_000.0, pares)
+        valoracion = g._assess_value(822_000.0, pares, dict(CLIENTE))
         self.assertEqual(valoracion["assessment"], "Not assessed")
         self.assertIn("another anchor", valoracion["basis"])
         self.assertIsNone(valoracion["value_ratio"])
@@ -183,29 +186,83 @@ class TheLabelDescribesTheComparison(unittest.TestCase):
     def pares(self, *valores):
         return [{"transfer_fee": v, "market": "a_league"} for v in valores]
 
+    def valorar(self, valor, *pares):
+        """With a price the client put on the player, so the comparison is
+        not refused as circular before the label is reached."""
+        return self.g._assess_value(valor, self.pares(*pares), dict(CLIENTE))
+
     def test_the_three_bands(self):
         for valor, esperado in ((500_000.0, "Priced below peers"),
                                 (1_000_000.0, "In line with peers"),
                                 (2_000_000.0, "Priced above peers")):
-            got = self.g._assess_value(valor, self.pares(1_000_000.0))
-            self.assertEqual(got["assessment"], esperado, valor)
+            self.assertEqual(
+                self.valorar(valor, 1_000_000.0)["assessment"], esperado, valor)
 
     def test_no_label_claims_to_know_what_the_player_is_worth(self):
         for valor in (100_000.0, 1_000_000.0, 9_000_000.0):
-            etiqueta = self.g._assess_value(
-                valor, self.pares(1_000_000.0))["assessment"]
+            etiqueta = self.valorar(valor, 1_000_000.0)["assessment"]
             for palabra in ("undervalued", "overvalued", "fair value"):
                 self.assertNotIn(palabra, etiqueta.lower(), valor)
 
     def test_the_basis_says_the_peers_share_the_market(self):
-        got = self.g._assess_value(500_000.0, self.pares(1_000_000.0))
+        got = self.valorar(500_000.0, 1_000_000.0)
         self.assertIn("same market", got["basis"])
         self.assertIn("not observed transfer fees", got["basis"])
 
     def test_the_ratio_itself_is_unchanged(self):
-        got = self.g._assess_value(500_000.0, self.pares(1_000_000.0))
+        got = self.valorar(500_000.0, 1_000_000.0)
         self.assertAlmostEqual(got["value_ratio"], 0.5)
         self.assertEqual(got["vs_comparables"], "-50.0% (1 peers)")
+
+
+class KumuDoesNotCompareItselfToItself(unittest.TestCase):
+    """The ratio is f(index) over f(the three nearest indices), by one
+    formula, against peers chosen on that same index. `derive_anchor`
+    already refuses the public population's values for calibrating anchors
+    for this reason; the same objection applies here."""
+
+    def setUp(self):
+        self.g = ScoutingReportGenerator()
+
+    def pares(self, *valores, **extra):
+        return [dict({"transfer_fee": v, "market": "a_league"}, **extra)
+                for v in valores]
+
+    def test_estimates_on_both_sides_are_refused(self):
+        got = self.g._assess_value(822_000.0, self.pares(900_000.0), clough())
+        self.assertEqual(got["assessment"], "Not assessed")
+        self.assertIsNone(got["value_ratio"])
+        self.assertIn("measures the formula, not the player", got["basis"])
+
+    def test_no_row_in_the_database_carries_a_declared_price_today(self):
+        """`players.market_value_source` does not exist, so this is False
+        for everything. When the column arrives, this test is where the
+        change announces itself."""
+        for fila in (None, {}, {"market_value": 822_000.0},
+                     {"market_value_source": None}):
+            self.assertFalse(ScoutingReportGenerator._declared_price(fila), fila)
+
+    def test_a_price_on_the_player_turns_it_on(self):
+        got = self.g._assess_value(500_000.0, self.pares(1_000_000.0),
+                                   dict(CLIENTE))
+        self.assertEqual(got["assessment"], "Priced below peers")
+
+    def test_a_price_on_a_single_peer_turns_it_on(self):
+        got = self.g._assess_value(
+            500_000.0, self.pares(1_000_000.0, market_value_source="client"),
+            clough())
+        self.assertEqual(got["assessment"], "Priced below peers")
+
+    def test_the_whole_section_still_generates_when_it_is_refused(self):
+        club = {"id": 1, "name": "Fiorentina", "league": "Serie A",
+                "country": "Italy", "budget": 110_000_000.0,
+                "playing_style": None, "expected_index": None}
+        self.g._query_db = lambda sql, params, org_ids=None: []
+        seccion = self.g.generate_market_analysis(clough(), club)
+        self.assertEqual(seccion["value_assessment"]["assessment"],
+                         "Not assessed")
+        self.assertIsNone(seccion["value_assessment"]["recommendation"])
+        self.assertIsNotNone(seccion["roi_analysis"])
 
 
 if __name__ == "__main__":
