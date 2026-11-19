@@ -43,36 +43,48 @@ point.
 
 import argparse
 import os
+import re
 import sys
 from collections import Counter
 
 from sqlalchemy import create_engine, text
 
-# Prefix -> who actually produced the data. Longest first, so `sc_club_`
-# is matched before `sc_`.
+# Prefix -> who produced the data. Longest first, so `sc_club_` is matched
+# before `sc_`.
+#
+# These are the prefixes minted by this repository's own loaders, read off
+# production rather than guessed: the first version of this table had four
+# entries and covered 408 of 441 players and 8 of 63 clubs.
 PROVEEDORES = [
     ("wc2022_", "statsbomb_wc2022"),
+    # The twenty-eight goalkeepers. The prefix is the declared source cut to
+    # twelve characters by `stable_external_id`, so it reads "statsbomb_wc".
+    ("statsbomb_wc", "statsbomb_wc2022"),
     ("sbgk_", "statsbomb_wc2022"),
+    # The thirty-two national sides, whose squads come from the same source.
+    ("nat_", "statsbomb_wc2022"),
+    # Not a provider. pipeline/seed_teams.py invents these twenty: the names
+    # are real clubs, and the budget, formation, possession, pressing, needs
+    # and expected level are all Kumü's own curation. "Manchester City,
+    # €900M, 4-3-3, possession 0.68" is a decision, not a measurement, and
+    # labelling it statsbomb would be the exact error this column exists to
+    # prevent.
+    ("club_", "kumu_curated"),
     ("sc_club_", "skillcorner"),
     ("sc_", "skillcorner"),
     ("skillcorner", "skillcorner"),
 ]
 
-
-def proveedor(external_id):
-    """The provider behind an identifier, or None if the prefix is unknown."""
-    if not external_id:
-        return None
-    for prefijo, nombre in PROVEEDORES:
-        if external_id.startswith(prefijo):
-            return nombre
-    return None
-
+# What the API writes: `<source truncated to 12>_<16 hex>`. The prefix IS the
+# declared source, so reading it back is reading, not inferring - that is how
+# scouting-pro, demo and mi-proveedor are recovered without a table entry
+# each. Checked only after the list above, since wc2022_ has the same shape.
+DEL_API = re.compile(r"^(.+)_[0-9a-f]{16}$")
 
 # Written out per table rather than interpolated. `tests/test_sql.py` parses
-# every query in the tree with libpg_query, and "UPDATE %s SET …" is not
-# SQL until Python has formatted it - so a template hides itself from the
-# one check that would catch a real mistake in it.
+# every query in the tree with libpg_query, and "UPDATE %s SET …" is not SQL
+# until Python has formatted it - so a template hides itself from the one
+# check that would catch a real mistake in it.
 SQL = {
     "players": {
         "ids": "SELECT external_id FROM players",
@@ -81,9 +93,10 @@ SQL = {
                  "ON players (source)",
         "fill": """
             UPDATE players SET source = :nombre
-            WHERE source IS NULL AND external_id LIKE :patron
+            WHERE source IS NULL AND external_id = ANY(:ids)
         """,
         "missing": "SELECT count(*) FROM players WHERE source IS NULL",
+        "sin_fuente": "SELECT external_id FROM players WHERE source IS NULL",
     },
     "teams": {
         "ids": "SELECT external_id FROM teams",
@@ -92,11 +105,25 @@ SQL = {
                  "ON teams (source)",
         "fill": """
             UPDATE teams SET source = :nombre
-            WHERE source IS NULL AND external_id LIKE :patron
+            WHERE source IS NULL AND external_id = ANY(:ids)
         """,
         "missing": "SELECT count(*) FROM teams WHERE source IS NULL",
+        "sin_fuente": "SELECT external_id FROM teams WHERE source IS NULL",
     },
 }
+
+
+def proveedor(external_id):
+    """The provider behind an identifier, or None if it cannot be read."""
+    if not external_id:
+        return None
+    for prefijo, nombre in PROVEEDORES:
+        if external_id.startswith(prefijo):
+            return nombre
+    coincide = DEL_API.match(external_id)
+    if coincide:
+        return coincide.group(1)
+    return None
 
 
 def columnas(conn):
@@ -165,13 +192,23 @@ def main() -> int:
             conn.execute(text(SQL[tabla]["add"]))
             conn.execute(text(SQL[tabla]["index"]))
 
+        # Grouped by provider rather than by prefix, because the API rows
+        # are recognised by shape and not by a prefix anyone listed. One
+        # statement per provider instead of one per row: five hundred round
+        # trips to US West is a minute of waiting for nothing.
         escritos = {}
         for tabla in ("players", "teams"):
+            porfuente = {}
+            for (eid,) in conn.execute(text(SQL[tabla]["sin_fuente"])):
+                nombre = proveedor(eid)
+                if nombre:
+                    porfuente.setdefault(nombre, []).append(eid)
             total = 0
-            for prefijo, nombre in PROVEEDORES:
+            for nombre, ids in sorted(porfuente.items()):
                 res = conn.execute(text(SQL[tabla]["fill"]),
-                                   {"nombre": nombre, "patron": prefijo + "%"})
+                                   {"nombre": nombre, "ids": ids})
                 total += res.rowcount or 0
+                print("  %-8s %-22s %d" % (tabla, nombre, res.rowcount or 0))
             escritos[tabla] = total
 
     with engine.connect() as conn:
