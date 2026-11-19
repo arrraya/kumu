@@ -1886,9 +1886,15 @@ class ScoutingReportGenerator:
         # Calculate ROI potential
         roi_analysis = self._calculate_roi_potential(player_data, team_data, value_projections)
 
+        # The price comparison is made first and judged last: the verdict on
+        # it needs the return, which is computed above.
+        value_assessment = self._assess_value(current_value, comparable_players)
+        value_assessment["recommendation"] = self._value_recommendation(
+            value_assessment, roi_analysis)
+
         return {
             "current_market_value": current_value,
-            "value_assessment": self._assess_value(current_value, comparable_players),
+            "value_assessment": value_assessment,
             "value_projections": value_projections,
             "comparable_transfers": comparable_players,
             "roi_analysis": roi_analysis,
@@ -1976,39 +1982,69 @@ class ScoutingReportGenerator:
 
         return projections
 
-    def _find_comparable_transfers(self, player_data: Dict, org_ids=None) -> List[Dict]:
-        """Real positional peers from Kumu's own database (no mock data).
+    # How many positional peers to pull before filtering by market. The
+    # closest three overall are frequently all in another market, so the
+    # candidates are drawn wide and narrowed afterwards.
+    PEER_CANDIDATES = 60
+    PEERS_WANTED = 3
 
-        Note: values are Kumu estimates derived from performance, so these are
-        peers for context, not observed transfer fees.
+    def _find_comparable_transfers(self, player_data: Dict, org_ids=None) -> List[Dict]:
+        """Positional peers from Kumu's own database, priced on the same scale.
+
+        Values are Kumü estimates derived from performance, so these are peers
+        for context, not observed transfer fees.
+
+        The market filter is the point. Peers used to be the three nearest by
+        index with no regard for where they play, and a player's value is the
+        index multiplied by his market's anchor - €2.5M per index 100 in the
+        A-League, €30M for international. Z. Clough, an A-League winger at
+        €822K, was therefore compared against World Cup wingers of almost the
+        same index and came out "95.4% below his peers", which the panel read
+        as a bargain. Nearly all of that gap is the ratio between two anchors.
+        It was a currency conversion presented as a discount.
         """
         position = player_data.get("position") or ""
         name = player_data.get("name") or ""
         idx = (player_data.get("performance_index") or {}).get("value", 0) or 0
+        mercado = self._anchor_field(self._seller_anchor(player_data), "market")
 
         rows = self._query_db(
             """
-            SELECT name, current_team, market_value, performance_index
-            FROM players
-            WHERE position = :position AND name <> :name
-              AND (performance_index->>'value') IS NOT NULL AND market_value IS NOT NULL
-              AND organization_id IN :org_ids
-            ORDER BY ABS((performance_index->>'value')::float - :idx) ASC
-            LIMIT 3
+            SELECT p.name, p.current_team, p.market_value, p.performance_index,
+                   t.league
+            FROM players p
+            LEFT JOIN squad_memberships sm
+                   ON sm.player_id = p.id AND sm.left_at IS NULL
+            LEFT JOIN teams t ON t.id = sm.team_id
+            WHERE p.position = :position AND p.name <> :name
+              AND (p.performance_index->>'value') IS NOT NULL
+              AND p.market_value IS NOT NULL
+              AND p.organization_id IN :org_ids
+            ORDER BY ABS((p.performance_index->>'value')::float - :idx) ASC
+            LIMIT :candidatos
             """,
-            {"position": position, "name": name, "idx": float(idx)},
+            {"position": position, "name": name, "idx": float(idx),
+             "candidatos": self.PEER_CANDIDATES},
             org_ids,
         )
 
+        from app.core import markets
+
         comparables = []
         for r in rows:
+            if len(comparables) >= self.PEERS_WANTED:
+                break
             pi = r[3] if isinstance(r[3], dict) else {}
+            suyo = markets.market_of(r[4])
+            if mercado is not None and suyo != mercado:
+                continue
             comparables.append({
                 "player": r[0],
                 "position": position,
                 "from_club": r[1],
                 "transfer_fee": float(r[2] or 0),
                 "performance_index": pi.get("value"),
+                "market": suyo,
                 "basis": "Kumu database peer (estimated value)",
             })
         return comparables
@@ -2032,38 +2068,102 @@ class ScoutingReportGenerator:
             # transfers" on the page.
             return {
                 "assessment": "Not assessed",
-                "recommendation": "No valued peers in the same position to compare against.",
+                "recommendation": None,
                 "value_ratio": None,
                 "vs_comparables": None,
-                "basis": "No comparable players with an assessed value were found.",
+                "basis": (
+                    "No peers in this player's own market with an assessed "
+                    "value were found, and peers from another market are "
+                    "priced on another anchor, so the comparison would be a "
+                    "currency conversion rather than a discount."
+                ),
             }
 
         avg_comparable_fee = float(np.mean(fees))
         value_ratio = current_value / avg_comparable_fee
 
+        # Labels describe what was computed - a price against other prices -
+        # rather than passing judgement on it. "Undervalued" is a claim about
+        # what a player is worth; this ratio only knows what Kumü estimated
+        # for three other players in the same position and market. The
+        # judgement, which needs the return as well, is made in
+        # `_value_recommendation` once that figure exists.
         if value_ratio < 0.85:
-            assessment = "Undervalued"
-            recommendation = "Excellent value opportunity"
+            assessment = "Priced below peers"
         elif value_ratio < 1.15:
-            assessment = "Fair value"
-            recommendation = "Market-appropriate pricing"
+            assessment = "In line with peers"
         else:
-            assessment = "Overvalued"
-            recommendation = "Negotiate aggressively or consider alternatives"
+            assessment = "Priced above peers"
 
         return {
             "assessment": assessment,
-            "recommendation": recommendation,
+            "recommendation": None,
             "value_ratio": value_ratio,
             # Short: the label beside it already says these are valued peers,
             # and the basis below spells out what that means.
             "vs_comparables": f"{((value_ratio - 1) * 100):+.1f}% ({len(fees)} peers)",
+            "market": next(
+                (p.get("market") for p in comparable_players if p.get("market")),
+                None),
             "basis": (
                 f"Compared against {len(fees)} players in Kumü's database with the "
-                f"closest index in the same position. Their values are Kumü "
-                f"estimates, not observed transfer fees."
+                f"closest index in the same position and the same market. Their "
+                f"values are Kumü estimates, not observed transfer fees."
             ),
         }
+
+    # What the price comparison says once the return is known. Keyed by the
+    # label above so a new label cannot silently fall through to nothing.
+    _VEREDICTO_POSITIVO = {
+        "Priced below peers":
+            "Cheaper than its valued peers, with a positive return over "
+            "%(anos)d years.",
+        "In line with peers":
+            "Priced in line with its valued peers, with a positive return "
+            "over %(anos)d years.",
+        "Priced above peers":
+            "More expensive than its valued peers, though the return over "
+            "%(anos)d years is still positive.",
+    }
+    _VEREDICTO_NEGATIVO = {
+        "Priced below peers":
+            "Cheaper than its valued peers, but the return over %(anos)d "
+            "years is negative. Cheap and worth buying are different claims, "
+            "and only the first one is supported here.",
+        "In line with peers":
+            "Priced in line with its valued peers, and the return over "
+            "%(anos)d years is negative.",
+        "Priced above peers":
+            "More expensive than its valued peers, and the return over "
+            "%(anos)d years is negative.",
+    }
+
+    def _value_recommendation(self, valoracion: Optional[Dict],
+                              roi: Optional[Dict]) -> Optional[str]:
+        """What to do about the price, once the return is known.
+
+        "Excellent value opportunity" came from the price ratio alone, so it
+        was printed beside a projected ROI of -41.2%, a risk-adjusted -30.3%
+        and "No breakeven", on one screen, for one player. The panel made a
+        recommendation while displaying the evidence against it, and nothing
+        in the code connected the two: `_assess_value` never saw the return
+        and `_calculate_roi_potential` never saw the price comparison.
+        """
+        etiqueta = (valoracion or {}).get("assessment")
+        if not etiqueta or etiqueta == "Not assessed":
+            return None
+
+        retorno = (roi or {}).get("roi_percentage")
+        if not isinstance(retorno, (int, float)):
+            return ("A price comparison only: no return was computed for this "
+                    "signing, so nothing here says whether it pays back.")
+
+        tabla = (self._VEREDICTO_POSITIVO if retorno > 0
+                 else self._VEREDICTO_NEGATIVO)
+        plantilla = tabla.get(etiqueta)
+        if plantilla is None:
+            return None
+        return plantilla % {"anos": self.ROI_HORIZON_YEARS}
 
     # Years of contribution counted in the ROI. Declared curation: a typical
     # contract length over which a signing is expected to pay back.
@@ -3053,10 +3153,14 @@ class ScoutingReportGenerator:
         else:  # "Balanced", or not assessed
             multiplier = 0.85
 
-        # Adjust for market conditions
-        if market_analysis["value_assessment"]["assessment"] == "Overvalued":
+        # Adjust for market conditions. Subscripted directly until now, which
+        # a player with no market analysis - value_assessment is None there -
+        # would have taken down with a TypeError.
+        etiqueta = ((market_analysis or {}).get("value_assessment")
+                    or {}).get("assessment")
+        if etiqueta == "Priced above peers":
             multiplier *= 0.9
-        elif market_analysis["value_assessment"]["assessment"] == "Undervalued":
+        elif etiqueta == "Priced below peers":
             multiplier *= 1.1
 
         return market_value * multiplier
