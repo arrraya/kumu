@@ -64,6 +64,10 @@ interface ScoutingReportData {
     };
     percentile_population?: string | null;
     percentile_basis?: string | null;
+    // Declared here since before today. The backend computed both and the
+    // response model dropped them, so the two lines the interface was
+    // written to show never arrived.
+    metrics_basis?: string | null;
   };
   tactical_analysis: {
     formation_compatibility: {
@@ -492,31 +496,77 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
       <div className="bg-paper-card border border-rule rounded-sm p-6">
         <h3 className="text-xl font-semibold mb-6">Performance Metrics</h3>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <div className="bg-field-wash p-4 rounded-sm">
-            <h4 className="font-medium text-ink mb-3">Statistical Strengths</h4>
-            <ul className="space-y-2">
-              {report.statistical_overview.statistical_strengths.map((strength, i) => (
-                <li key={i} className="text-sm text-field-dark flex items-start gap-2">
-                  <TrendingUp className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                  <span>{strength}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-          
-          <div className="bg-flag-wash p-4 rounded-sm">
-            <h4 className="font-medium text-flag mb-3">Areas for Development</h4>
-            <ul className="space-y-2">
-              {report.statistical_overview.statistical_weaknesses.map((weakness, i) => (
-                <li key={i} className="text-sm text-flag flex items-start gap-2">
-                  <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                  <span>{weakness}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
+        {/* An empty list used to render as a titled box with nothing in
+            it, and a reader completes that as "no weaknesses". It means one
+            of two different things - nothing cleared the threshold, or
+            nothing was ranked at all - and the difference is the whole
+            point of the section. A centre-back came out with five strengths
+            and an empty development box on a source that carries neither
+            aerial duels nor blocks. */}
+        {(() => {
+          const stats = report.statistical_overview;
+          const rankeadas = Object.values(
+            (stats.position_specific_analysis || {}) as Record<string, any>
+          ).reduce(
+            (n: number, cat: any) =>
+              n +
+              Object.values(cat || {}).filter(
+                (m: any) => m && m.percentile !== null && m.percentile !== undefined
+              ).length,
+            0
+          );
+          const vacio = (umbral: string) =>
+            rankeadas === 0
+              ? 'Not assessed: nothing this source carries was ranked against a reference population.'
+              : `Nothing ${umbral} among the ${rankeadas} metrics Kumü ranked.`;
+          const nota = [stats.percentile_basis, stats.metrics_basis]
+            .filter(Boolean)
+            .join(' ');
+          return (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div className="bg-field-wash p-4 rounded-sm">
+                  <h4 className="font-medium text-ink mb-3">Statistical Strengths</h4>
+                  {stats.statistical_strengths.length > 0 ? (
+                    <ul className="space-y-2">
+                      {stats.statistical_strengths.map((strength, i) => (
+                        <li key={i} className="text-sm text-field-dark flex items-start gap-2">
+                          <TrendingUp className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                          <span>{strength}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-ink-soft leading-snug">
+                      {vacio('at or above the 75th percentile')}
+                    </p>
+                  )}
+                </div>
+
+                <div className="bg-flag-wash p-4 rounded-sm">
+                  <h4 className="font-medium text-flag mb-3">Areas for Development</h4>
+                  {stats.statistical_weaknesses.length > 0 ? (
+                    <ul className="space-y-2">
+                      {stats.statistical_weaknesses.map((weakness, i) => (
+                        <li key={i} className="text-sm text-flag flex items-start gap-2">
+                          <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                          <span>{weakness}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-ink-soft leading-snug">
+                      {vacio('below the 40th percentile')}
+                    </p>
+                  )}
+                </div>
+              </div>
+              {nota && (
+                <p className="text-xs text-ink-soft mb-6 leading-snug">{nota}</p>
+              )}
+            </>
+          );
+        })()}
 
         <div className="grid grid-cols-2 gap-4">
           {/* "Insufficient data" used to appear above "Score: 0/100", which
