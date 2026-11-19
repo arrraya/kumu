@@ -90,6 +90,14 @@ class ScoutingReport(BaseModel):
     comparison_analysis: ComparisonAnalysis
     risk_assessment: RiskAssessment
     negotiation_strategy: NegotiationStrategy
+    # Declared here or dropped on the way out. Pydantic keeps only what the
+    # response model lists, so a field added to the generator and not to this
+    # class never reaches the interface and nothing fails - the sixth time
+    # this has happened in Kumü, and the first where the dropped field was
+    # the one that says what the figures were measured against. A report
+    # generated today announced that it predated its own basis.
+    source_notes: Optional[List[str]] = None
+    basis: Optional[Dict[str, Any]] = None
 
 
 class GenerateReportRequest(BaseModel):
