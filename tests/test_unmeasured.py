@@ -97,6 +97,26 @@ class ATieIsNotARank(unittest.TestCase):
         self.assertEqual(
             g.calculate_percentile(0.3, "key_passes_per_90", "ST", LIGA), 25)
 
+    def test_a_value_above_an_all_zero_band_keeps_its_rank(self):
+        """The centre-backs table has all five thresholds at 0.0, so a
+        defender with any assists at all clears the whole band. He is above
+        it, not inside it, and that is a real rank: nine in ten of his
+        position recorded none. The first version of this guard sent him to
+        None alongside the player with zero, which is the same figure for
+        two opposite facts."""
+        g = generador({"assists_per_90": dict(TODOS_CERO)})
+        self.assertEqual(
+            g.calculate_percentile(0.3, "assists_per_90", "ST", LIGA), 90)
+        self.assertIsNone(
+            g.calculate_percentile(0.0, "assists_per_90", "ST", LIGA))
+
+    def test_above_a_partial_zero_band_reads_at_the_band_it_cleared(self):
+        """Zero at the 10th and 25th, 0.3 at the 50th: a value of 0.1 is
+        above the first band and below the next."""
+        g = generador({"m": {10: 0.0, 25: 0.0, 50: 0.3, 75: 1.0, 90: 1.8}})
+        self.assertEqual(g.calculate_percentile(0.1, "m", "ST", LIGA), 25)
+        self.assertIsNone(g.calculate_percentile(0.0, "m", "ST", LIGA))
+
     def test_a_value_above_the_tie_is_unaffected(self):
         g = generador({"key_passes_per_90": dict(EMPATE_MEDIO)})
         self.assertEqual(
@@ -107,10 +127,16 @@ class ATieIsNotARank(unittest.TestCase):
         self.assertIsNone(
             g.calculate_percentile(1.0, "goals_per_90", "ST", LIGA))
 
-    def test_nothing_a_tie_produces_is_ever_above_its_own_band(self):
-        """The property, over every table a benchmark can take: the rank
-        returned is never higher than the lowest percentile sharing the
-        threshold that was met."""
+    def test_a_tie_is_never_read_above_itself(self):
+        """The property, over every table a benchmark can take. Two
+        invariants, and the first version of this test asserted only a
+        superseded form of the second, which is why it went red when the
+        rule was corrected rather than when the rule was wrong.
+
+          - the rank never exceeds the highest threshold the value meets;
+          - a value sitting exactly on a tied threshold is never read above
+            the floor of that tie.
+        """
         for a, b, c in itertools.product((0.0, 0.3), (0.0, 0.3, 1.0),
                                          (0.0, 1.0, 2.0)):
             tabla = {10: 0.0, 25: a, 50: b, 75: c, 90: max(c, 2.0)}
@@ -123,11 +149,25 @@ class ATieIsNotARank(unittest.TestCase):
                     continue
                 alcanzados = [p for p in tabla if valor >= tabla[p]]
                 if not alcanzados:
+                    self.assertEqual(got, 10, (tabla, valor))
                     continue
-                umbral = tabla[max(alcanzados)]
-                piso = min(p for p in alcanzados if tabla[p] == umbral)
-                self.assertLessEqual(got, piso if piso else got,
-                                     (tabla, valor, got))
+                tope = max(alcanzados)
+                self.assertLessEqual(got, tope, (tabla, valor, got))
+                umbral = tabla[tope]
+                if valor == umbral:
+                    piso = min(p for p in alcanzados if tabla[p] == umbral)
+                    self.assertLessEqual(got, piso, (tabla, valor, got))
+
+    def test_the_two_zeroes_are_never_the_same_answer(self):
+        """A player on the tied threshold and a player above the whole band
+        are opposite facts. They must not come back as one figure."""
+        for tope90 in (0.0, 2.0):
+            tabla = {10: 0.0, 25: 0.0, 50: 0.0, 75: 0.0, 90: tope90}
+            g = generador({"m": tabla})
+            dentro = g.calculate_percentile(0.0, "m", "ST", LIGA)
+            encima = g.calculate_percentile(0.3, "m", "ST", LIGA)
+            self.assertIsNone(dentro, tabla)
+            self.assertIsNotNone(encima, tabla)
 
 
 class AStandInIsNotAMeasurement(unittest.TestCase):

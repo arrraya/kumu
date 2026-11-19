@@ -349,20 +349,28 @@ class ScoutingReportGenerator:
         if not alcanzados:
             return 10  # below every threshold Kumü holds
 
-        umbral = benchmarks[max(alcanzados)]
+        tope = max(alcanzados)
+        umbral = benchmarks[tope]
+        if value > umbral:
+            # Strictly above every threshold it meets, ties included. A
+            # centre-back with any assists at all clears a band of five
+            # zeroes and is above all of them, which is a rank and a real
+            # one: at least nine centre-backs in ten recorded none.
+            return tope
+
+        # Sitting exactly on the threshold. Alone, that is an ordinary
+        # reading. Shared with lower percentiles, it is a mass point: the
+        # value is somewhere inside the band and nothing says where.
         empatados = [p for p in alcanzados if benchmarks[p] == umbral]
-        # `len > 1` is the difference between a tie and an ordinary reading:
-        # a value that meets the lowest threshold and no other is at the
-        # bottom of the table, which is a rank. A value that meets several
-        # thresholds holding the same number is not.
         if len(empatados) > 1 and min(empatados) == min(benchmarks):
-            # The tied band reaches the bottom of the table: this metric puts
-            # the player nowhere in particular. Reporting the top of the band
-            # is the error above, and reporting the bottom is the same error
-            # aimed the other way, so there is no rank to report.
+            # The band reaches the bottom of the table, so there is nothing
+            # to report. Reporting its top is the error this guard exists
+            # for; reporting its bottom is the same error aimed the other
+            # way. Twenty-six of Kumü's tables are in this state, all of
+            # them a metric most of a position never records in three
+            # matches: goals and assists for defenders, tackles and
+            # interceptions for strikers.
             return None
-        # Inside a tie the value sits somewhere in the band and nothing says
-        # where, so it is read at the bottom of it rather than the top.
         return min(empatados)
 
     def categorize_performance(self, percentile: int) -> PerformanceCategory:
