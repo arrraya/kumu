@@ -187,6 +187,20 @@ interface ScoutingReportData {
   // What this source does not carry, for this player and this club. Empty
   // when it carries everything the report asked of it.
   source_notes?: string[];
+  // Which yardsticks produced these figures. Absent on reports written
+  // before Kumü recorded them, which is the honest answer for those.
+  basis?: {
+    index_reference?: {
+      peers?: number;
+      population?: number;
+      as_of?: string | null;
+      fingerprint?: string;
+    } | null;
+    index_scaled?: boolean;
+    fee_anchor?: { market?: string; value?: number; source?: string } | null;
+    value_anchor?: { market?: string; value?: number; source?: string } | null;
+    contract_version?: string;
+  };
 }
 
 const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
@@ -1326,6 +1340,50 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
           </span>
         </p>
       )}
+
+      {/* Which yardsticks these numbers are relative to. An index is a
+          position among peers and a fee is an index times an anchor, so
+          neither means anything without the thing it was measured against
+          — and both have moved: the reference population went from 307 to
+          335 in a day, and the A-League anchor from €30M to €2.5M. */}
+      {(() => {
+        const b = report.basis
+        if (!b) {
+          return (
+            <p className="mt-3 max-w-read text-sm text-ink-soft">
+              <span className="is-curated">
+                This report predates Kumü recording what its figures were
+                measured against, so it cannot say which reference
+                population or market anchor produced them.
+              </span>
+            </p>
+          )
+        }
+        const ref = b.index_reference
+        const fee = b.fee_anchor
+        const partes: string[] = []
+        if (ref?.population) {
+          partes.push(
+            `Index scaled against ${ref.population} players` +
+            (ref.peers ? `, ${ref.peers} in this position` : '') +
+            (ref.as_of ? `, as of ${ref.as_of}` : '')
+          )
+        } else if (b.index_scaled === false) {
+          partes.push('Index not scaled: too few peers in this position')
+        }
+        if (fee?.market) {
+          partes.push(
+            `fees in the ${fee.market.replace(/_/g, ' ')} market ` +
+            `(${fee.source === 'curated' ? 'curated' : 'measured'} anchor)`
+          )
+        }
+        if (!partes.length) return null
+        return (
+          <p className="mt-3 max-w-read text-sm text-ink-soft">
+            {partes.join(' · ')}.
+          </p>
+        )
+      })()}
 
       {report.source_notes && report.source_notes.length > 0 && (
         <p className="mt-3 max-w-read text-sm text-ink-soft leading-relaxed">

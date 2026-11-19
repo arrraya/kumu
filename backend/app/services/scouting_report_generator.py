@@ -3321,8 +3321,48 @@ class ScoutingReportGenerator:
             ),
         }
         report["source_notes"] = self._source_notes(player_data, team_data)
+        report["basis"] = self._basis(player_data, team_data)
 
         return report
+
+    def _basis(self, player_data: Dict, team_data: Dict) -> Dict[str, Any]:
+        """What this report's figures were computed against.
+
+        Two things decided every number here and neither was written down.
+
+        The index is a position among peers, so it means nothing without
+        the population it was placed against; when that population changed
+        - 307 to 335 the day the goalkeepers were loaded - every index
+        already issued kept its digits and lost its meaning.
+
+        The money has the same shape. An index becomes a fee through an
+        anchor, and the day the A-League got one of its own a player went
+        from €11.2M to around €900K. A report filed before that is not
+        wrong about what Kumü thought; it is silent about what Kumü
+        thought it against.
+
+        Recorded here so a report read later can say which yardstick it
+        used, and a reader can tell whether it is the current one.
+        """
+        index = player_data.get("performance_index") or {}
+        seller = self._seller_anchor(player_data)
+        buyer = self._buyer_anchor(team_data)
+
+        def anchor(a):
+            if not a:
+                return None
+            return {"market": a.get("market"), "value": a.get("value"),
+                    "source": a.get("source")}
+
+        return {
+            # None for an unscaled index, and for every index written
+            # before this was recorded. Both are honest; neither is zero.
+            "index_reference": index.get("reference"),
+            "index_scaled": bool(index.get("scaled")),
+            "fee_anchor": anchor(seller),
+            "value_anchor": anchor(buyer),
+            "contract_version": _contract_version(),
+        }
 
     # Metrics that only exist when the feed carries them. A position judged on
     # duels it has no record of scores low for a reason the reader deserves.
@@ -3382,6 +3422,14 @@ class ScoutingReportGenerator:
             )
 
         return notes
+
+
+def _contract_version() -> str:
+    """Imported lazily: the schema module imports this one for the position
+    normaliser, so a top-level import here would be a cycle."""
+    from app.schemas.ingest import CONTRACT_VERSION
+
+    return CONTRACT_VERSION
 
 
 # Example usage

@@ -13,7 +13,7 @@ an asset rather than a demo.
 """
 import hashlib
 import json
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 import numpy as np
 from sqlalchemy import text
@@ -37,7 +37,48 @@ def stable_external_id(source: str, org_id: int, client_id: str) -> str:
     return f"{source[:12]}_{hashlib.sha1(raw.encode('utf-8')).hexdigest()[:16]}"
 
 
-def reference_scales(db: Session, org_ids: List[int]) -> Dict[str, Tuple[float, float]]:
+class Reference(NamedTuple):
+    """The population an index was placed against, and its identity.
+
+    An index is not an absolute mark. 70 means "where the typical player
+    of this position sits", and ten points is roughly a deviation, so the
+    number only means anything alongside the population that produced it.
+    When the reference changed - the public organisation went from 307 to
+    335 the day twenty-eight goalkeepers were loaded - every index written
+    before it kept its digits and lost its meaning, and nothing on the
+    page said so.
+
+    With two clients it stops being subtle: one scaled against 335 and the
+    other against 835 are not on the same scale, and a scout comparing two
+    reports would be comparing two different yardsticks without being told.
+
+    So each index carries this stamp, and the report declares it. The
+    identity has to be a property of the POPULATION and not of the moment
+    the code ran: `renormalise` decides whether a row changed by comparing
+    what it would write against what is there, so a stamp holding "now"
+    would mark every player as reindexed on every load, every day, for
+    nothing.
+    """
+
+    scales: Dict[str, Tuple[float, float]]
+    population: int
+    peers: Dict[str, int]
+    as_of: Optional[str]
+    fingerprint: str
+
+    def stamp(self, position: Optional[str]) -> Optional[Dict[str, Any]]:
+        """What travels on one player's index."""
+        if not position or position not in self.scales:
+            return None
+        return {
+            "peers": self.peers.get(position, 0),
+            "population": self.population,
+            "as_of": self.as_of,
+            "fingerprint": self.fingerprint,
+        }
+
+
+def reference_scales(db: Session, org_ids: List[int]) -> Reference:
     """Mean and spread of the reference population's raw index, per position.
 
     Reads `raw_value` where present: that is the figure before normalisation,
@@ -49,7 +90,8 @@ def reference_scales(db: Session, org_ids: List[int]) -> Dict[str, Tuple[float, 
                COALESCE(
                    (performance_index->>'raw_value')::float,
                    (performance_index->>'value')::float
-               ) AS v
+               ) AS v,
+               updated_at
         FROM players
         WHERE COALESCE(performance_index->>'raw_value',
                        performance_index->>'value') IS NOT NULL
@@ -57,31 +99,60 @@ def reference_scales(db: Session, org_ids: List[int]) -> Dict[str, Tuple[float, 
     """).bindparams(), {"org_ids": tuple(org_ids)}).fetchall()
 
     by_position: Dict[str, List[float]] = {}
-    for position, value in rows:
+    latest = None
+    for position, value, updated in rows:
         if position and value is not None:
             by_position.setdefault(position, []).append(float(value))
+        if updated is not None and (latest is None or updated > latest):
+            latest = updated
 
-    scales = {}
+    scales, peers = {}, {}
     for position, values in by_position.items():
         if len(values) >= MIN_PEERS_FOR_SCALE:
             spread = float(np.std(values))
             scales[position] = (float(np.mean(values)), spread if spread > 0 else 1.0)
-    return scales
+            peers[position] = len(values)
+
+    # Of the scale itself, not of the clock. Two loads over the same rows
+    # produce the same digest; one added player changes it. That is what
+    # makes a stored index comparable to a live one - or provably not.
+    material = json.dumps(
+        [[k, round(scales[k][0], 4), round(scales[k][1], 4), peers[k]]
+         for k in sorted(scales)],
+        separators=(",", ":"),
+    )
+    return Reference(
+        scales=scales,
+        population=sum(len(v) for v in by_position.values()),
+        peers=peers,
+        as_of=latest.date().isoformat() if latest is not None else None,
+        fingerprint=hashlib.sha1(material.encode()).hexdigest()[:8],
+    )
 
 
-def _apply_scale(raw: float, scale: Optional[Tuple[float, float]]) -> Dict[str, float]:
-    """Place a raw index on the shared scale, tails compressed not clipped."""
+def _apply_scale(raw: float, scale: Optional[Tuple[float, float]],
+                 reference: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Place a raw index on the shared scale, tails compressed not clipped.
+
+    `reference` is the stamp of the population the scale came from, so the
+    figure carries the thing it is relative to. Omitted, the result is what
+    it always was: callers that have no population to name - the tests that
+    hand it a bare mean and spread - are not made to invent one.
+    """
     if not scale:
         # No reference for this position: report the raw figure and say so,
         # rather than inventing a scale from too few peers.
         return {"value": round(raw, 1), "raw_value": round(raw, 1), "scaled": False}
     mean, spread = scale
     z = (raw - mean) / spread
-    return {
+    out: Dict[str, Any] = {
         "value": round(70.0 + 30.0 * float(np.tanh(z / 2.5)), 1),
         "raw_value": round(raw, 1),
         "scaled": True,
     }
+    if reference:
+        out["reference"] = reference
+    return out
 
 
 def renormalise(db: Session, org_id: int, org_ids: List[int]) -> Dict[str, Any]:
@@ -108,7 +179,7 @@ def renormalise(db: Session, org_id: int, org_ids: List[int]) -> Dict[str, Any]:
     already-normalised numbers would compress the scale a second time,
     and the query was written to avoid exactly that.
     """
-    scales = reference_scales(db, org_ids)
+    reference = reference_scales(db, org_ids)
     rows = db.execute(text("""
         SELECT id, position, performance_index
         FROM players
@@ -120,7 +191,9 @@ def renormalise(db: Session, org_id: int, org_ids: List[int]) -> Dict[str, Any]:
     for player_id, position, index in rows:
         if not isinstance(index, dict):
             continue
-        fresh = _apply_scale(float(index["raw_value"]), scales.get(position))
+        fresh = _apply_scale(float(index["raw_value"]),
+                             reference.scales.get(position),
+                             reference.stamp(position))
         if all(index.get(k) == v for k, v in fresh.items()):
             continue
         before = index.get("value")
@@ -141,7 +214,7 @@ def renormalise(db: Session, org_id: int, org_ids: List[int]) -> Dict[str, Any]:
     }
 
 
-def prepare_player(record: PlayerRecord, scales: Dict[str, Tuple[float, float]],
+def prepare_player(record: PlayerRecord, reference: "Reference",
                    source: str, org_id: int) -> Optional[Dict[str, Any]]:
     """Derive everything Kumu computes for itself from what the client supplied."""
     position = scoring.normalize_position(record.position)
@@ -163,7 +236,8 @@ def prepare_player(record: PlayerRecord, scales: Dict[str, Tuple[float, float]],
     raw = scoring.raw_index(history)
     index = None
     if raw:
-        scaled = _apply_scale(raw["value"], scales.get(position))
+        scaled = _apply_scale(raw["value"], reference.scales.get(position),
+                              reference.stamp(position))
         index = {**raw, **scaled}
 
     metrics = record.metrics.model_dump(exclude_none=True)
@@ -187,10 +261,10 @@ def ingest(db: Session, payload: IngestPayload, org_id: int,
            org_ids: List[int]) -> Dict[str, Any]:
     """Write a payload into the caller's tenant and report what landed."""
 
-    scales = reference_scales(db, org_ids)
+    reference = reference_scales(db, org_ids)
     prepared, skipped = [], []
     for record in payload.players:
-        row = prepare_player(record, scales, payload.source, org_id)
+        row = prepare_player(record, reference, payload.source, org_id)
         (prepared if row else skipped).append(row or record.external_id)
 
     db.execute(text(

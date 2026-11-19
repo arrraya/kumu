@@ -165,6 +165,10 @@ async def generate_report(
         team_id=request.team_id,
         match_id=request.match_id,
         report_data=report_data,
+        # Stored in its own column as well as inside report_data, so a row
+        # can be asked what it was computed against without parsing the
+        # whole report.
+        basis=report_data.get("basis"),
         organization_id=owner_org,
     )
     db.add(db_report)

@@ -170,6 +170,13 @@ class ScoutingReport(Base):
     team_id = Column(Integer, ForeignKey("teams.id"))
     match_id = Column(Integer, ForeignKey("player_team_matches.id"))
     report_data = Column(JSON)
+    # What the figures were computed against: which reference population
+    # scaled the index, and which market anchors turned it into money.
+    # NULL on every report written before this column existed, which is the
+    # honest answer for them - a report filed before the A-League had an
+    # anchor of its own is not wrong about what Kumü thought, it is silent
+    # about what Kumü thought it against.
+    basis = Column(JSON)
     generated_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
