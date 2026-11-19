@@ -52,6 +52,9 @@ class StatisticalOverview(BaseModel):
     # the reader assumed.
     percentile_population: Optional[str] = None
     percentile_basis: Optional[str] = None
+    # Which metrics were left out of the ranking because the source does not
+    # carry them. Without it they read as metrics Kumü chose not to show.
+    metrics_basis: Optional[str] = None
 
 
 class TacticalAnalysis(BaseModel):

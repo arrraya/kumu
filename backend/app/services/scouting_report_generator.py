@@ -336,11 +336,34 @@ class ScoutingReportGenerator:
         if not benchmarks:
             return None
 
-        for percentile in sorted(benchmarks.keys(), reverse=True):
-            if value >= benchmarks[percentile]:
-                return percentile
+        # Thresholds rise with the percentile, so scanning from the top
+        # returns the highest one the value clears. That is right while the
+        # thresholds are distinct, and flattery the moment they tie - and
+        # they tie at zero, for every metric most players in a position never
+        # record. A centre-back with no assists cleared a 90th-percentile
+        # threshold of 0.0 and was reported "Assists Per 90: Elite (90th
+        # percentile)". A striker with no assists came out "Excellent
+        # (75th)". Both figures were measured; both ranks were an artefact
+        # of the ties underneath them.
+        alcanzados = [p for p in benchmarks if value >= benchmarks[p]]
+        if not alcanzados:
+            return 10  # below every threshold Kumü holds
 
-        return 10  # Below 10th percentile
+        umbral = benchmarks[max(alcanzados)]
+        empatados = [p for p in alcanzados if benchmarks[p] == umbral]
+        # `len > 1` is the difference between a tie and an ordinary reading:
+        # a value that meets the lowest threshold and no other is at the
+        # bottom of the table, which is a rank. A value that meets several
+        # thresholds holding the same number is not.
+        if len(empatados) > 1 and min(empatados) == min(benchmarks):
+            # The tied band reaches the bottom of the table: this metric puts
+            # the player nowhere in particular. Reporting the top of the band
+            # is the error above, and reporting the bottom is the same error
+            # aimed the other way, so there is no rank to report.
+            return None
+        # Inside a tie the value sits somewhere in the band and nothing says
+        # where, so it is read at the bottom of it rather than the top.
+        return min(empatados)
 
     def categorize_performance(self, percentile: int) -> PerformanceCategory:
         """Categorize performance based on percentile"""
@@ -490,6 +513,11 @@ class ScoutingReportGenerator:
         # Kumü holds no reference population, and those are dropped rather
         # than averaged: a missing benchmark used to arrive here as 50 and
         # pull the average toward a verdict nobody measured.
+        # Stand-ins are excluded here for the same reason they are excluded
+        # from the section below: averaging them produced a figure about
+        # Kumü's constants rather than about the player. Two players with
+        # nothing in common both reported "individual metrics (51st)".
+        rellenos_exec = player_data.get("metrics_filled") or {}
         percentile_values = [
             p for p in (
                 self.calculate_percentile(
@@ -500,6 +528,7 @@ class ScoutingReportGenerator:
                 )
                 for cat in player_data["metrics"]
                 for metric in player_data["metrics"][cat]
+                if metric not in set(rellenos_exec.get(cat) or ())
             )
             if p is not None
         ]
@@ -719,6 +748,15 @@ class ScoutingReportGenerator:
         return out
 
     @staticmethod
+    def _listar(items: List[str]) -> str:
+        """"a", "a and b", "a, b and c" - so a sentence naming what is
+        missing reads as a sentence."""
+        items = list(items)
+        if len(items) <= 1:
+            return items[0] if items else ""
+        return "%s and %s" % (", ".join(items[:-1]), items[-1])
+
+    @staticmethod
     def _fmt_money(v) -> str:
         if not isinstance(v, (int, float)) or v <= 0:
             return "—"
@@ -731,10 +769,26 @@ class ScoutingReportGenerator:
         metrics_analysis = {}
 
         population = self.percentile_population(position, league)
+        # A metric the source did not carry is not scored at all. It used to
+        # be: `merge_metrics` supplied a stand-in, the stand-in was measured
+        # against the positional benchmark like any other figure, and
+        # anything it scored at or above the 75th arrived on the page under
+        # "Statistical Strengths". A pass difficulty score of 0.6 - Kumü's
+        # constant, carried by no source in the database - is above the 90th
+        # for every position, so every player Kumü holds was published as
+        # elite at it. 1.5 interceptions is elite for a striker, good for a
+        # centre-back and average for a winger: one constant, three verdicts,
+        # none of them about a footballer.
+        rellenos = player_data.get("metrics_filled") or {}
+        sin_medir = []
 
         for category, metrics in player_data["metrics"].items():
+            rellenos_cat = set(rellenos.get(category) or ())
             category_analysis = {}
             for metric, value in metrics.items():
+                if metric in rellenos_cat:
+                    sin_medir.append(metric.replace("_", " "))
+                    continue
                 percentile = self.calculate_percentile(value, metric, position, league)
                 # A metric Kumü holds no benchmark for keeps its value and
                 # loses its verdict. It used to keep both: `calculate_percentile`
@@ -754,6 +808,14 @@ class ScoutingReportGenerator:
 
         return {
             "position_specific_analysis": metrics_analysis,
+            # Named, because a metric that is simply absent from the list
+            # above reads as one Kumü chose not to show.
+            "metrics_basis": (
+                "Not scored: this source carries no %s for this player, so "
+                "Kumü's working stand-ins are left out of the ranking rather "
+                "than ranked." % self._listar(sorted(set(sin_medir)))
+                if sin_medir else None
+            ),
             # Named once for the whole section, so every percentile under it
             # is read against the population that actually produced it rather
             # than against the club the reader happens to be assessing for.
@@ -3262,6 +3324,29 @@ class ScoutingReportGenerator:
         return merged
 
     @classmethod
+    def filled_metrics(cls, real_metrics) -> Dict[str, List[str]]:
+        """Which keys `merge_metrics` supplied, per category.
+
+        `merge_metrics` returns a structure in which a stand-in and a
+        measurement have the same shape, and every consumer downstream has
+        treated them alike ever since. This is the record that tells them
+        apart. It is derived from the same input by the same rules, so the
+        two cannot drift: if the merge fills it, this names it.
+        """
+        if not real_metrics or not isinstance(real_metrics, dict):
+            return {c: sorted(d) for c, d in cls.NEUTRAL_METRICS.items()}
+        rellenos = {}
+        for categoria, defaults in cls.NEUTRAL_METRICS.items():
+            real_cat = real_metrics.get(categoria)
+            if not isinstance(real_cat, dict):
+                rellenos[categoria] = sorted(defaults)
+                continue
+            faltantes = sorted(k for k in defaults if real_cat.get(k) is None)
+            if faltantes:
+                rellenos[categoria] = faltantes
+        return rellenos
+
+    @classmethod
     def build_player_data(cls, player) -> Dict:
         """Adapt a DB player row into the dict shape this generator expects."""
         return {
@@ -3280,6 +3365,10 @@ class ScoutingReportGenerator:
             "performance_index": getattr(player, "performance_index", None)
             or {"value": 70.0, "trend": 0.0, "volatility": 0.2, "confidence": 0.5},
             "metrics": cls.merge_metrics(getattr(player, "metrics", None)),
+            # Travels beside the metrics so a stand-in can be told from a
+            # measurement after the merge has made them identical.
+            "metrics_filled": cls.filled_metrics(
+                getattr(player, "metrics", None)),
             "performance_history": getattr(player, "performance_history", None)
             or [{"rating": 7.0, "goals": 0, "assists": 0}] * 5,
         }
