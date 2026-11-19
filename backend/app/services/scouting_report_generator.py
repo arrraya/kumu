@@ -3255,6 +3255,7 @@ class ScoutingReportGenerator:
             "nationality": player.nationality,
             "current_team": getattr(player, "current_team", None),
             "market_value": getattr(player, "market_value", None),
+            "source": getattr(player, "source", None),
             "performance_index": getattr(player, "performance_index", None)
             or {"value": 70.0, "trend": 0.0, "volatility": 0.2, "confidence": 0.5},
             "metrics": cls.merge_metrics(getattr(player, "metrics", None)),
@@ -3355,6 +3356,12 @@ class ScoutingReportGenerator:
                     "source": a.get("source")}
 
         return {
+            # Who produced the numbers. Kumü has always declared what KIND a
+            # figure is - measured, estimated, decided - and never who
+            # measured it, so "12.2 km per 90, measured" could have come
+            # from SkillCorner, from StatsBomb or from the client's own
+            # spreadsheet, all three of which are in the same table.
+            "provider": player_data.get("source"),
             # None for an unscaled index, and for every index written
             # before this was recorded. Both are honest; neither is zero.
             "index_reference": index.get("reference"),

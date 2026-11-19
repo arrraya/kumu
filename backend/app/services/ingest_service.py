@@ -244,6 +244,10 @@ def prepare_player(record: PlayerRecord, reference: "Reference",
 
     return {
         "external_id": stable_external_id(source, org_id, record.external_id),
+        # Declared, not inferred from the identifier's prefix. The prefix is
+        # the source truncated to twelve characters, which is a hint; this
+        # is the fact.
+        "source": source,
         "name": record.name,
         "position": position,
         "nationality": record.nationality,
@@ -276,12 +280,15 @@ def ingest(db: Session, payload: IngestPayload, org_id: int,
         db.execute(text("""
             INSERT INTO players (external_id, name, age, position, nationality,
                                  current_team, market_value, performance_index,
-                                 metrics, performance_history, organization_id)
+                                 metrics, performance_history, organization_id,
+                                 source)
             VALUES (:external_id, :name, :age, :position, :nationality,
                     :current_team, :market_value,
                     CAST(:performance_index AS JSON), CAST(:metrics AS JSON),
-                    CAST(:performance_history AS JSON), :organization_id)
+                    CAST(:performance_history AS JSON), :organization_id,
+                    :source)
             ON CONFLICT (external_id) DO UPDATE SET
+                source = EXCLUDED.source,
                 name = EXCLUDED.name, age = EXCLUDED.age,
                 position = EXCLUDED.position, nationality = EXCLUDED.nationality,
                 current_team = EXCLUDED.current_team,
@@ -348,11 +355,12 @@ def _ingest_club(db: Session, payload: IngestPayload, org_id: int) -> Dict[str, 
     db.execute(text("""
         INSERT INTO teams (external_id, name, league, country, budget, formation,
                            playing_style, requirements, team_type,
-                           organization_id, created_at)
+                           organization_id, created_at, source)
         VALUES (:external_id, :name, :league, :country, :budget, :formation,
                 CAST(:playing_style AS JSON), CAST(:requirements AS JSON),
-                'club', :organization_id, NOW())
+                'club', :organization_id, NOW(), :source)
         ON CONFLICT (external_id) DO UPDATE SET
+            source = EXCLUDED.source,
             name = EXCLUDED.name, league = EXCLUDED.league,
             country = EXCLUDED.country, budget = EXCLUDED.budget,
             formation = EXCLUDED.formation,
@@ -364,6 +372,7 @@ def _ingest_club(db: Session, payload: IngestPayload, org_id: int) -> Dict[str, 
         "playing_style": json.dumps(style),
         "requirements": json.dumps({}),
         "organization_id": org_id,
+        "source": payload.source,
     })
 
     # Scoped on the tenant as well as the key. stable_external_id already

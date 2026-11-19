@@ -192,6 +192,20 @@ class TheReportDeclaresIt(unittest.TestCase):
         self.assertFalse(basis["index_scaled"])
         self.assertIsNone(basis["index_reference"])
 
+    def test_it_names_who_produced_the_data(self):
+        """The one thing Kumü never said. It marks every figure measured,
+        estimated or decided, and the word "SkillCorner" appeared in one
+        panel of the whole interface, for the seven players with a clip."""
+        p = self.player()
+        p["source"] = "skillcorner"
+        basis = self.g.generate_full_report(p, dict(self.CLUB))["basis"]
+        self.assertEqual(basis["provider"], "skillcorner")
+
+    def test_an_unknown_provider_is_none_not_a_guess(self):
+        basis = self.g.generate_full_report(
+            self.player(), dict(self.CLUB))["basis"]
+        self.assertIsNone(basis["provider"])
+
     def test_every_section_still_generates(self):
         for index in (None, {"value": 71.0, "raw_value": 71.0, "scaled": True},
                       {"value": 71.0, "raw_value": 71.0, "scaled": False}):

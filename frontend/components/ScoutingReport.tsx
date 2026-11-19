@@ -190,6 +190,7 @@ interface ScoutingReportData {
   // Which yardsticks produced these figures. Absent on reports written
   // before Kumü recorded them, which is the honest answer for those.
   basis?: {
+    provider?: string | null;
     index_reference?: {
       peers?: number;
       population?: number;
@@ -1362,6 +1363,14 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
         const ref = b.index_reference
         const fee = b.fee_anchor
         const partes: string[] = []
+        if (b.provider) {
+          // The one thing Kumü never said. It marks every figure as
+          // measured, estimated or decided, and named the provider in
+          // exactly one panel, for the seven players who have a clip.
+          partes.push(
+            `Data from ${b.provider.replace(/_/g, ' ')}`
+          )
+        }
         if (ref?.population) {
           partes.push(
             `Index scaled against ${ref.population} players` +

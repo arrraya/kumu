@@ -75,6 +75,16 @@ class Player(Base):
     # Zone-to-zone pass flows: the compact spatial fingerprint.
     spatial_profile = Column(JSON)
     performance_history = Column(JSON)
+    # Who produced this row's data. Kumü declares what KIND each figure is -
+    # measured, estimated, decided - and until this column it could not say
+    # WHO measured it. A sporting director reading "12.2 km per 90, measured"
+    # had no way to tell SkillCorner from StatsBomb from a file their own
+    # analyst uploaded, and all three live in this table.
+    #
+    # It was never recorded as a fact, only hinted at in the identifier, and
+    # by four different conventions: wc2022_ (a tournament, not a provider),
+    # sbgk_, sc_, and <source>_ from the API. See pipeline/migrate_source.py.
+    source = Column(String, index=True)
 
     # Relationships
     matches = relationship("PlayerTeamMatch", back_populates="player")
@@ -103,6 +113,8 @@ class Team(Base):
     spatial_profile = Column(JSON)
     requirements = Column(JSON)
     created_at = Column(DateTime, default=datetime.utcnow)
+    # Same as on Player: which provider this club came from.
+    source = Column(String, index=True)
 
     # Relationships
     matches = relationship("PlayerTeamMatch", back_populates="team")
