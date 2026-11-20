@@ -15,7 +15,9 @@ const PlayerCard: React.FC<PlayerCardProps> = ({ player, onClick, isSelected }) 
   // Safely access nested properties with fallbacks
   const performanceValue = player?.performanceIndex?.value || 0
   const trend = player?.performanceIndex?.trend || 0
-  const marketValue = player?.marketValue || 0
+  // Not `|| 0`: formatMoney prints a dash for an absent value and €0K for
+  // a zero, and a player with no valuation is the first of those.
+  const marketValue = player?.marketValue ?? null
   
   return (
     <div 

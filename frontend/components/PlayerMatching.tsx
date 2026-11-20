@@ -229,19 +229,40 @@ const PlayerMatching: React.FC<PlayerMatchingProps> = ({
                   </div>
                   <div className="flex-1">
                     <h2 className="text-2xl font-bold text-ink">{selectedPlayer.name}</h2>
+                    {/* "age n/a" was printed unconditionally, from the days when
+                        no source carried a birth date. Some do now, so this card
+                        said "age n/a" about a player whose scouting report, one
+                        click away, opened with "Age 22". Same player, two screens,
+                        two answers. */}
                     <div className="text-ink-soft mt-1">
                       {selectedPlayer.position} • {selectedPlayer.nationality}
-                      <span className="text-ink-faint" title="Age not available in the current data source">
-                        {' '}• age n/a
-                      </span>
+                      {typeof selectedPlayer.age === 'number' ? (
+                        <span>{' '}• age {selectedPlayer.age}</span>
+                      ) : (
+                        <span className="text-ink-faint" title="This data source carries no birth date for this player">
+                          {' '}• age not recorded
+                        </span>
+                      )}
                     </div>
+                    {/* And the fee: `?? 0` in the normaliser turned an absent
+                        valuation into €0.0M, labelled "(estimated)" - a figure
+                        Kumü never estimated, presented as one it had. The
+                        estimate does exist, but it is made per club and shown
+                        on the match cards below as the recommended offer. */}
                     <div className="text-ink-soft">
                       {typeof selectedPlayer.marketValue === 'number'
-                        ? formatMoney(selectedPlayer.marketValue)
-                        : '—'}
-                      <span className="text-ink-faint text-sm" title="Kumu-estimated value derived from the performance index">
-                        {' '}(estimated)
-                      </span>
+                        && selectedPlayer.marketValue > 0 ? (
+                        <>
+                          {formatMoney(selectedPlayer.marketValue)}
+                          <span className="text-ink-faint text-sm" title="Kumu-estimated value derived from the performance index">
+                            {' '}(estimated)
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-ink-faint text-sm">
+                          No valuation supplied — see the recommended offer per club below
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>

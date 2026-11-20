@@ -24,7 +24,12 @@ function normalizePlayer(p: any): any {
   if (!p) return p;
   return {
     ...p,
-    marketValue: p.marketValue ?? p.market_value ?? 0,
+    // NOT `?? 0`. A player whose feed carries no valuation arrived in the
+    // UI as zero euros, which a sporting director reads as "worth
+    // nothing" rather than "not supplied" - and no component could tell
+    // them apart afterwards, because the distinction was destroyed here,
+    // one function before any of them saw it.
+    marketValue: p.marketValue ?? p.market_value ?? null,
     currentTeam: p.currentTeam ?? p.current_team ?? '',
     performanceIndex: p.performanceIndex ?? p.performance_index ?? null,
     spatial_profile: p.spatial_profile ?? p.spatialProfile ?? null,

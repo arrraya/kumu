@@ -39,6 +39,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveView }) => {
     q3Index: 0,
     indexedPlayers: 0,
     totalMarketValue: 0,
+    valuedPlayers: 0,
     topPerformers: [] as any[],
     topValued: [] as any[],
     activeMatches: 0,
@@ -61,7 +62,13 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveView }) => {
       const topValued = [...players]
         .sort((a: any, b: any) => (b.marketValue || 0) - (a.marketValue || 0))
         .slice(0, 3)
-      const totalMarketValue = players.reduce((s: number, p: any) => s + (p.marketValue || 0), 0)
+      // Same reasoning as the index below, which this line used to ignore:
+      // a player without a valuation is not worth zero, he is absent from
+      // the sum. Counting him in understated the total and claimed to
+      // cover a population it did not.
+      const valued = players.filter((p: any) => typeof p.marketValue === 'number' && p.marketValue > 0)
+      const totalMarketValue = valued.reduce((s: number, p: any) => s + p.marketValue, 0)
+      const valuedPlayers = valued.length
       // Only players who actually have an index. A player without one is not
       // a zero; he is absent from this distribution, and counting him as a
       // zero would drag every summary figure down.
@@ -92,6 +99,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveView }) => {
         q3Index,
         indexedPlayers: indexes.length,
         totalMarketValue,
+        valuedPlayers,
         topPerformers,
         topValued,
       }))
@@ -120,7 +128,13 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveView }) => {
     {
       title: 'Combined value',
       value: `€${(stats.totalMarketValue / 1_000_000_000).toFixed(2)}B`,
-      // Every value in that sum is Kumü's own estimate, not an observed fee.
+      // Every value in that sum is Kumü's own estimate, not an observed fee -
+      // and the sum covers only the players who carry one, named here because
+      // a total over 307 of 441 players reads as a total over all of them.
+      note: stats.valuedPlayers && stats.totalPlayers
+        && stats.valuedPlayers < stats.totalPlayers
+        ? `over ${stats.valuedPlayers} of ${stats.totalPlayers} players`
+        : undefined,
       estimated: true,
     },
   ]

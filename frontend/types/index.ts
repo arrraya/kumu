@@ -38,11 +38,15 @@ export interface PerformanceIndex {
     // on a name two players can share.
     external_id?: string | null;
     name: string;
-    age: number;
+    // Both nullable, and the type said otherwise for as long as both were
+    // always present. A feed that carries no birth date and no valuation is
+    // the ordinary case now, and while these read `number` the compiler
+    // agreed with every component that treated an absence as a figure.
+    age: number | null;
     position: string;
     nationality: string;
     currentTeam: string;
-    marketValue: number;
+    marketValue: number | null;
     performanceIndex: PerformanceIndex;
     metrics: PlayerMetrics;
     recentForm: Array<{
