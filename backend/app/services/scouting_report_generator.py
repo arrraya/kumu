@@ -1858,7 +1858,23 @@ class ScoutingReportGenerator:
             "score": risk_score,
             "risk_factors": risk_factors,
             "mitigation_suggestions": self._suggest_injury_mitigation(risk_factors),
-            "basis": "Assessed from " + ", ".join(considered) + ".",
+            # A score of nought needs saying out loud. This model only adds:
+            # age over 28, injuries lasting more than a fortnight, a workload
+            # above 11.5km. A 22-year-old with no injury history and no
+            # tracking data accumulates none of them and comes out at "0% ·
+            # Low Risk · Assessed from age", which reads as a medical
+            # clearance. It is the floor of a scale of flags, not a
+            # probability, and the docstring above warns about this exact
+            # reading for the case where there are no inputs at all - while
+            # the case where the inputs are present and none of them fire
+            # produced the same misleading nought.
+            "basis": (
+                "Assessed from " + ", ".join(considered) + "."
+                + ("" if risk_score else
+                   " None of the factors Kumü checks are present, so this is "
+                   "the bottom of the scale rather than a clean bill of "
+                   "health.")
+            ),
         }
 
     def _suggest_injury_mitigation(self, risk_factors: List[str]) -> List[str]:

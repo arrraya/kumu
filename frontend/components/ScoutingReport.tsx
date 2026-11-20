@@ -418,6 +418,16 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
           <div className="text-lg font-semibold">{level}</div>
           <div className="text-sm text-ink-soft">{score.toFixed(1)}% risk</div>
         </div>
+        {/* `basis` reached this component and was used only on the branch
+            where there is no score - so the one case that needs it most, a
+            figure averaged over three of five risks with the other two saying
+            "Not assessed" in the cards directly below, showed the figure and
+            nothing else. */}
+        {basis && (
+          <p className="mt-3 text-xs text-ink-soft leading-snug text-center">
+            {basis}
+          </p>
+        )}
       </div>
     );
   };
