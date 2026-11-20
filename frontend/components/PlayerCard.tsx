@@ -3,6 +3,7 @@
 import React from 'react'
 import { User, Activity, DollarSign, Flag } from 'lucide-react'
 import { Player } from '@/types'
+import { formatMoney } from '@/lib/money'
 
 interface PlayerCardProps {
   player: Player
@@ -56,7 +57,7 @@ const PlayerCard: React.FC<PlayerCardProps> = ({ player, onClick, isSelected }) 
         <div className="flex items-center gap-2">
           <DollarSign className="w-3 h-3 text-ink-faint" />
           <span className="text-sm text-ink-soft">
-            €{(marketValue / 1000000).toFixed(1)}M
+            {formatMoney(marketValue)}
           </span>
         </div>
       </div>

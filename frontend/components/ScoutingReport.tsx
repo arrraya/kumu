@@ -14,6 +14,7 @@ import {
 import { Player, Match } from '@/types';
 import { api } from '@/lib/api';
 import { loadReport, saveReport } from '@/lib/reportCache';
+import { formatMoney } from '@/lib/money';
 import PitchMap from '@/components/PitchMap'
 import PoseClip from '@/components/PoseClip'
 
@@ -292,9 +293,9 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
    */
 
   // Tolerates absence: a client whose feed carries no valuations should see a
-  // dash, not "€NaNM".
-  const formatCurrency = (value: number | null | undefined) =>
-    typeof value === 'number' ? `€${(value / 1000000).toFixed(1)}M` : '—';
+  // dash, not "€NaNM". Shared with every other component since a fee under
+  // €1M used to print as €0.8M here and €823K two panels away.
+  const formatCurrency = formatMoney;
   const formatPercentage = (value: number) => `${value.toFixed(1)}%`;
 
   const sections = [

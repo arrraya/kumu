@@ -6,6 +6,7 @@ import {
 } from 'recharts'
 import { api } from '@/lib/api'
 import { valueMark, valueTitle } from '@/lib/provenance'
+import { formatMoney } from '@/lib/money'
 import PitchMap from './PitchMap'
 
 /**
@@ -78,7 +79,7 @@ const PlayerPicker: React.FC<{
               {value.position} • {value.nationality} •{' '}
               {typeof value.marketValue === 'number' ? (
                 <span className={`tabular ${valueMark(value)}`} title={valueTitle(value)}>
-                  €{(value.marketValue / 1e6).toFixed(1)}M
+                  {formatMoney(value.marketValue)}
                 </span>
               ) : 'value n/a'}
             </div>

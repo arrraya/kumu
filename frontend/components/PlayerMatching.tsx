@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { saveReport } from '@/lib/reportCache';
+import { formatMoney } from '@/lib/money';
 import { Player, Team, Match } from '@/types';
 import PlayerCard from './PlayerCard';
 import ClubSearch from './ClubSearch';
@@ -113,7 +114,7 @@ const PlayerMatching: React.FC<PlayerMatchingProps> = ({
     }
   };
 
-  const formatCurrency = (value: number) => `€${(value / 1000000).toFixed(1)}M`;
+  const formatCurrency = formatMoney;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
@@ -236,7 +237,7 @@ const PlayerMatching: React.FC<PlayerMatchingProps> = ({
                     </div>
                     <div className="text-ink-soft">
                       {typeof selectedPlayer.marketValue === 'number'
-                        ? `€${(selectedPlayer.marketValue / 1000000).toFixed(1)}M`
+                        ? formatMoney(selectedPlayer.marketValue)
                         : '—'}
                       <span className="text-ink-faint text-sm" title="Kumu-estimated value derived from the performance index">
                         {' '}(estimated)

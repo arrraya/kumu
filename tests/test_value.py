@@ -265,5 +265,35 @@ class KumuDoesNotCompareItselfToItself(unittest.TestCase):
         self.assertIsNotNone(seccion["roi_analysis"])
 
 
+class AFeeIsNeverRoundedToNothing(unittest.TestCase):
+    """`int(share * 100)` truncated, in both directions."""
+
+    def setUp(self):
+        self.g = ScoutingReportGenerator()
+
+    def test_a_real_fee_against_a_large_budget_is_not_zero(self):
+        """€822K against €110M: 0.75%, printed "0% of €110.0M"."""
+        self.assertEqual(self.g._fmt_share(822_000 / 110_000_000), "under 1%")
+
+    def test_the_three_fees_from_the_reports_reviewed(self):
+        for fee, presupuesto in ((936_000, 900_000_000),
+                                 (946_000, 400_000_000),
+                                 (822_000, 110_000_000)):
+            self.assertEqual(self.g._fmt_share(fee / presupuesto), "under 1%")
+
+    def test_it_rounds_rather_than_truncating(self):
+        self.assertEqual(self.g._fmt_share(0.996), "100%")
+        self.assertEqual(self.g._fmt_share(0.014), "1%")
+        self.assertEqual(self.g._fmt_share(0.4), "40%")
+
+    def test_a_share_of_nothing_is_zero(self):
+        self.assertEqual(self.g._fmt_share(0), "0%")
+        self.assertEqual(self.g._fmt_share(None), "0%")
+
+    def test_nothing_between_nought_and_one_per_cent_prints_as_a_digit(self):
+        for pct in (0.0001, 0.001, 0.005, 0.0099):
+            self.assertEqual(self.g._fmt_share(pct), "under 1%", pct)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

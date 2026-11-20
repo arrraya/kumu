@@ -5,6 +5,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceDot,
 } from 'recharts'
 import { api } from '@/lib/api'
+import { formatMoney } from '@/lib/money'
 
 const WATCHLIST_KEY = 'kumu_watchlist'
 const PORTFOLIO_KEY = 'kumu_portfolio_v2'
@@ -31,7 +32,7 @@ type Row = {
   last_change_pct: number; high: number; low: number; volatility: number; matches: number
 }
 
-const money = (v: number) => `€${(v / 1_000_000).toFixed(1)}M`
+const money = formatMoney
 const pct = (v: number) => `${v > 0 ? '+' : ''}${v.toFixed(1)}%`
 
 const load = <T,>(key: string, fallback: T): T => {

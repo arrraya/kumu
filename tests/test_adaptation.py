@@ -85,10 +85,35 @@ class StayingPutIsNotAMove(unittest.TestCase):
         self.assertIn("Moving to new league", got["factors"])
         self.assertIn("International transfer", got["factors"])
 
-    def test_the_real_move_is_the_riskier_of_the_two(self):
+    def test_staying_put_scores_nothing_at_all(self):
+        """His own club, in his own country, and a club that declares no
+        playing style: there is no adaptation to score. A score of nought
+        would be a measurement of that absence, and twenty - the flat
+        default the style branch fell back on whenever a club declared no
+        style - was an invention of it. Neither is an answer."""
+        got = self.g._assess_adaptation_risk(player(), dict(BRISBANE))
+        self.assertIsNone(got["score"])
+        self.assertIsNone(got["level"])
+        self.assertIn("Not assessed", got["basis"])
+        self.assertIn("declares no playing style", got["basis"])
+
+    def test_a_real_move_is_scored_where_staying_put_is_not(self):
         quedarse = self.g._assess_adaptation_risk(player(), dict(BRISBANE))
         irse = self.g._assess_adaptation_risk(player(), dict(DORTMUND))
-        self.assertGreater(irse["score"], quedarse["score"])
+        self.assertIsNone(quedarse["score"])
+        self.assertIsNotNone(irse["score"])
+        self.assertGreater(irse["score"], 0)
+
+    def test_a_stand_in_metric_does_not_feed_the_style_gap(self):
+        """Pressing was read off 1.5 tackles plus 1.5 interceptions -
+        Kumü's constants - for every player whose feed omits them."""
+        crudas = {"passing": {"completion_rate": 0.78}}
+        sin_defensa = player(
+            metrics=ScoutingReportGenerator.merge_metrics(crudas),
+            metrics_filled=ScoutingReportGenerator.filled_metrics(crudas))
+        got = self.g._assess_adaptation_risk(sin_defensa, dict(DORTMUND))
+        self.assertIn("pressing", got["basis"])
+        self.assertIn("no tackles or interceptions", got["basis"])
 
     def test_the_old_reading_would_have_charged_him_anyway(self):
         """A check that cannot fail is not a check.

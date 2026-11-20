@@ -2,6 +2,7 @@
 import React from 'react';
 import { Eye } from 'lucide-react';
 import { Match } from '@/types';
+import { formatMoney } from '@/lib/money';
 
 /**
  * One club's fit with a player, shaped for comparison against the cards
@@ -31,7 +32,7 @@ const MatchCard: React.FC<{
   // The offer arrives in euros. It used to be multiplied by a million before
   // being divided by one, which printed "€25000000.0M".
   const money = (v: number) =>
-    !v ? '—' : v >= 1e6 ? `€${(v / 1e6).toFixed(1)}M` : `€${(v / 1e3).toFixed(0)}K`;
+    formatMoney(v);
 
   return (
     <div

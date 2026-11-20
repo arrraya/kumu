@@ -742,7 +742,7 @@ class ScoutingReportGenerator:
                 veredicto = "beyond what this budget absorbs"
             out.append({
                 "text": f"At {self._fmt_money(valor)}, {veredicto} "
-                        f"({int(share * 100)}% of {self._fmt_money(presupuesto)})",
+                        f"({self._fmt_share(share)} of {self._fmt_money(presupuesto)})",
                 # The public population carries a value because market.py derived
                 # it from the index, so "the field is populated" does not mean
                 # "somebody observed this price". Only a client-supplied figure
@@ -763,6 +763,24 @@ class ScoutingReportGenerator:
         if len(items) <= 1:
             return items[0] if items else ""
         return "%s and %s" % (", ".join(items[:-1]), items[-1])
+
+    @staticmethod
+    def _fmt_share(share: float) -> str:
+        """A share of a budget, rounded rather than truncated.
+
+        `int(share * 100)` cut the decimals off, so €822K against a €110M
+        budget printed "0% of €110.0M" - a fee the club is certainly paying,
+        reported as costing nothing - and it cut the other way too, printing
+        99% for 99.6%. Under one per cent is said in words, because "1%" for
+        0.7% is its own small lie and the reader only needs to know the fee
+        barely registers.
+        """
+        pct = (share or 0.0) * 100
+        if pct <= 0:
+            return "0%"
+        if pct < 1:
+            return "under 1%"
+        return "%d%%" % round(pct)
 
     @staticmethod
     def _fmt_money(v) -> str:
@@ -2870,39 +2888,81 @@ class ScoutingReportGenerator:
         # The endpoint now supplies the league from the player's open squad
         # spell, the same record `player_market` reads. Where there is none,
         # the factor is not scored and the absence is stated.
+        # Each unknown names the FACTOR it cost, not just the missing field.
+        # "Not counted, because his nationality is not recorded" printed under
+        # a figure of 25%, and a reader attaches "not counted" to the number
+        # above it: the card said both that adaptation was 25% and that it
+        # had not been counted.
         origen = player_data.get("current_league")
         if origen is None:
-            unknowns.append("the league he plays in now is not recorded")
+            unknowns.append("a league change (the league he plays in now is "
+                            "not recorded)")
         elif origen != team_data.get("league"):
             risk_score += 25
             factors.append("Moving to new league")
 
         nacionalidad = player_data.get("nationality")
         if nacionalidad is None:
-            unknowns.append("his nationality is not recorded")
+            unknowns.append("an international move (his nationality is not "
+                            "recorded)")
         elif nacionalidad != team_data.get("country"):
             risk_score += 15
             factors.append("International transfer")
 
-        # Playing style change
-        # Adaptation cost from the real gap between the player's output and
-        # what the club's style demands, instead of a flat +20 for everyone.
+        # Playing style change. Adaptation cost from the real gap between the
+        # player's output and what the club's style demands, instead of a flat
+        # +20 for everyone - which is what the `else` branch here still did
+        # whenever a club declared no style, so the figure the comment was
+        # written to remove survived underneath it for every such club.
+        #
+        # The gap is also only computable from figures the source carries.
+        # `merge_metrics` supplies a stand-in for whatever it does not, and
+        # pressing was being read off 1.5 tackles plus 1.5 interceptions -
+        # Kumü's constants - for every player whose feed omits them.
+        rellenos = player_data.get("metrics_filled") or {}
+
+        def medido(categoria: str, clave: str) -> bool:
+            return clave not in set(rellenos.get(categoria) or ())
+
         style = team_data.get("playing_style") or {}
         adapt_metrics = player_data.get("metrics", {})
         gaps = []
         possession = style.get("possession")
-        if possession is not None:
-            completion = adapt_metrics.get("passing", {}).get("completion_rate") or 0
-            gaps.append(max(0.0, possession - min(completion / 0.85, 1.0)))
         pressing = style.get("pressing_intensity")
+        if possession is None and pressing is None:
+            unknowns.append("style fit (this club declares no playing style)")
+        if possession is not None:
+            if medido("passing", "completion_rate"):
+                completion = adapt_metrics.get("passing", {}).get("completion_rate") or 0
+                gaps.append(max(0.0, possession - min(completion / 0.85, 1.0)))
+            else:
+                unknowns.append("keeping the ball (this source carries no "
+                                "pass completion)")
         if pressing is not None:
-            defensive = adapt_metrics.get("defensive", {})
-            actions = (defensive.get("tackles_per_90") or 0) + (
-                defensive.get("interceptions_per_90") or 0
-            )
-            gaps.append(max(0.0, pressing - min(actions / 4.0, 1.0)))
-        style_difference = round(float(np.mean(gaps)) * 40) if gaps else 20
-        risk_score += style_difference
+            if (medido("defensive", "tackles_per_90")
+                    and medido("defensive", "interceptions_per_90")):
+                defensive = adapt_metrics.get("defensive", {})
+                actions = (defensive.get("tackles_per_90") or 0) + (
+                    defensive.get("interceptions_per_90") or 0
+                )
+                gaps.append(max(0.0, pressing - min(actions / 4.0, 1.0)))
+            else:
+                unknowns.append("pressing (this source carries no tackles or "
+                                "interceptions)")
+        if gaps:
+            risk_score += round(float(np.mean(gaps)) * 40)
+
+        # Nothing scored at all is not a risk of zero. The aggregate above
+        # already counts a risk as unassessed and says so ("Averaged over 4 of
+        # 5 risks"), so this says it the same way the others do.
+        if not factors and not gaps:
+            return {
+                "score": None,
+                "level": None,
+                "factors": [],
+                "adaptation_period": None,
+                "basis": "Not assessed: %s." % self._listar(unknowns),
+            }
 
         return {
             "score": risk_score,
@@ -2910,7 +2970,8 @@ class ScoutingReportGenerator:
             "factors": factors,
             "adaptation_period": "3-6 months" if risk_score > 40 else "1-3 months",
             "basis": (
-                "Not counted, because %s." % " and ".join(unknowns)
+                "Not scored here: %s. The figure covers only what could be."
+                % self._listar(unknowns)
                 if unknowns else None
             ),
         }
