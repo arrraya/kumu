@@ -415,8 +415,17 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
           <circle cx="50" cy="50" r="3" fill="#1B1F1A" />
         </svg>
         <div className="text-center mt-2">
-          <div className="text-lg font-semibold">{level}</div>
-          <div className="text-sm text-ink-soft">{score.toFixed(1)}% risk</div>
+          <div className="text-lg font-semibold">{level} risk</div>
+          {/* Not "15.1% risk". These are weighted flags summed onto a 0-100
+              scale, and a per-cent sign makes them read as the chance of
+              something happening. A probability is what you publish when the
+              model has been validated against observed outcomes and you can
+              state its hit rate; Kumü has no observed transfers and no injury
+              outcomes, so it publishes a score and a band, which is what the
+              field does in the same position. The decimal went too: the flags
+              come in units of ten and fifteen, so a tenth of a point is
+              precision the inputs do not have. */}
+          <div className="text-sm text-ink-soft">score {Math.round(score)} of 100</div>
         </div>
         {/* `basis` reached this component and was used only on the branch
             where there is no score - so the one case that needs it most, a
@@ -1107,6 +1116,13 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
            />
          </div>
 
+         <p className="text-xs text-ink-soft mb-4 max-w-read leading-snug">
+           Risk scores are weighted flags on a 0&ndash;100 scale, not
+           probabilities. Kumü holds no observed transfers and no injury
+           outcomes to calibrate one against, so a score orders these five
+           against each other and nothing more.
+         </p>
+
          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
            {riskData.map((risk, i) => (
              <div key={i} className={`p-4 rounded-sm ${
@@ -1115,20 +1131,24 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
                'bg-loss-wash'
              }`}>
                <div className="text-sm font-medium capitalize text-ink-soft">{risk.type}</div>
+               {/* The band leads and the score follows it, rather than a
+                   per-cent figure leading and the band explaining it. */}
                <div className={`text-lg font-bold mt-1 ${
                  risk.level === 'Low' ? 'text-field' :
                  risk.level === 'Moderate' ? 'text-flag' :
                  'text-loss'
                }`}>
-                 {typeof risk.score === 'number' ? `${risk.score.toFixed(0)}%` : '—'}
+                 {risk.level ? `${risk.level} risk` : 'Not assessed'}
                </div>
-               <div className={`text-xs mt-1 ${
-                 risk.level === 'Low' ? 'text-field-dark' :
-                 risk.level === 'Moderate' ? 'text-flag' :
-                 'text-loss'
-               }`}>
-                 {risk.level ? `${risk.level} Risk` : 'Not assessed'}
-               </div>
+               {typeof risk.score === 'number' && (
+                 <div className={`text-xs mt-1 tabular ${
+                   risk.level === 'Low' ? 'text-field-dark' :
+                   risk.level === 'Moderate' ? 'text-flag' :
+                   'text-loss'
+                 }`}>
+                   score {Math.round(risk.score)} of 100
+                 </div>
+               )}
                {risk.basis && (
                  <p className="text-xs text-ink-soft mt-2 leading-snug">
                    {risk.basis}

@@ -933,7 +933,14 @@ class PDFReportGenerator:
         # has no level and no score, and formatting None with :.1f raises.
         risk_level = data.get("overall_risk_level") or "Not assessed"
         risk_score = data.get("risk_score")
-        score_text = f"{risk_score:.1f}" if isinstance(risk_score, (int, float)) else "—"
+        # "of 100", and no decimal: the sub-risks are weighted flags in units
+        # of ten and fifteen, so a tenth of a point is precision the inputs do
+        # not have. The web interface printed the same figure with a per-cent
+        # sign, which made it read as a probability; the two now agree, on the
+        # convention the field uses when a model has no observed outcomes to
+        # calibrate against.
+        score_text = (f"{round(risk_score)} of 100"
+                      if isinstance(risk_score, (int, float)) else "—")
 
         risk_data = [
             ["Risk Level:", risk_level],
