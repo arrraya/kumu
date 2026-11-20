@@ -1,6 +1,7 @@
 'use client'
 import React from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { paddedDomain, wholeTick } from '@/lib/axis'
 
 interface PerformanceChartProps {
   player: any
@@ -65,7 +66,12 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ player }) => {
         <LineChart data={data} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#D8D7CC" />
           <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-          <YAxis tick={{ fontSize: 10 }} domain={['dataMin - 5', 'dataMax + 5']} />
+          <YAxis
+            tick={{ fontSize: 10 }}
+            domain={paddedDomain(5)}
+            tickFormatter={wholeTick}
+            allowDecimals={false}
+          />
           <Tooltip content={renderTooltip} />
           <Line type="monotone" dataKey="value" stroke="#3A5A7A" strokeWidth={2} dot={{ r: 3 }} />
         </LineChart>

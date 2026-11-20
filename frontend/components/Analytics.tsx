@@ -7,6 +7,7 @@ import {
 import { api } from '@/lib/api'
 import { valueMark, valueTitle } from '@/lib/provenance'
 import { formatMoney } from '@/lib/money'
+import { paddedDomain, wholeTick } from '@/lib/axis'
 import PitchMap from './PitchMap'
 
 /**
@@ -380,16 +381,15 @@ const Analytics: React.FC = () => {
                         {/* Rounded bounds and a formatted tick. The domain used
                             to be computed as dataMin - 5, which handed the axis
                             raw floats and printed 99.99999999999999 down the
-                            side of the chart. */}
+                            side of the chart. Shared with PerformanceChart,
+                            which kept the broken version of this for as long
+                            as the formula lived in two files. */}
                         <YAxis
                           tick={axisFont}
                           stroke="#B6B4A6"
                           width={44}
-                          domain={[
-                            (dataMin: number) => Math.max(0, Math.floor((dataMin - 5) / 5) * 5),
-                            (dataMax: number) => Math.ceil((dataMax + 5) / 5) * 5,
-                          ]}
-                          tickFormatter={(v: number) => String(Math.round(v))}
+                          domain={paddedDomain(5)}
+                          tickFormatter={wholeTick}
                           allowDecimals={false}
                         />
                         <Tooltip formatter={(v: any) => (typeof v === 'number' ? v.toFixed(1) : v)} />
