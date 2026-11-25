@@ -609,12 +609,50 @@ class PlayerTeamMatcher:
         return sorted(matches, key=lambda x: x["score"]["overall_score"], reverse=True)
 
     def generate_recommendation(self, player: Player, team: Team, score: Dict) -> str:
-        """Generate a recommendation summary"""
-        if score["overall_score"] >= 85:
-            strength = "Excellent"
-        elif score["overall_score"] >= 75:
-            strength = "Strong"
-        else:
-            strength = "Good"
+        """Summarise the score in words that follow from the score.
 
-        return f"{strength} match - {player.name} shows high compatibility with {team.name}'s requirements"
+        The old version called anything under 75 "Good" and always said
+        "shows high compatibility", so a 30 read like a 74. The band now goes
+        down to "Poor", and the sentence names the strongest and weakest
+        component instead of a fixed phrase.
+        """
+        overall = score.get("overall_score")
+        breakdown = score.get("breakdown") or {}
+        if overall is None or not breakdown:
+            reason = score.get("error") or "no score breakdown"
+            return f"No assessment - {player.name} vs {team.name}: {reason}"
+
+        # Band on the same whole number that is printed, so a 49.95 cannot
+        # read "Poor match (50)" when 50 is the bottom of "Weak".
+        overall = round(overall)
+        if overall >= 85:
+            strength = "Excellent"
+        elif overall >= 75:
+            strength = "Strong"
+        elif overall >= 65:
+            strength = "Good"
+        elif overall >= 50:
+            strength = "Weak"
+        else:
+            strength = "Poor"
+
+        labels = {
+            "tactical_fit": "tactical fit",
+            "performance_match": "performance level",
+            "financial_fit": "financial fit",
+            "growth_potential": "growth potential",
+        }
+        ranked = sorted(breakdown.items(), key=lambda kv: kv[1], reverse=True)
+        best_key, best_val = ranked[0]
+        worst_key, worst_val = ranked[-1]
+        best = labels.get(best_key, best_key.replace("_", " "))
+        worst = labels.get(worst_key, worst_key.replace("_", " "))
+
+        if best_val == worst_val:
+            detail = f"all components at {best_val:.0f}"
+        else:
+            detail = (
+                f"strongest on {best} ({best_val:.0f}), "
+                f"weakest on {worst} ({worst_val:.0f})"
+            )
+        return f"{strength} match ({overall:.0f}) - {player.name} at {team.name}: {detail}"
