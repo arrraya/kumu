@@ -19,7 +19,9 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from app.main import app  # noqa: E402
 
-c = TestClient(app)
+# A server error is a failed check, not the end of the run: raised, the first
+# 500 hid every check after it.
+c = TestClient(app, raise_server_exceptions=False)
 FALLOS = []
 PASOS = []
 
@@ -65,6 +67,12 @@ def payload(etiqueta, completo=True):
             "metrics": {"shooting": {"goals_per_90": 0.4}},
             "performance_history": historial[:3],
         })
+        # No match log and no price: what a client sends when all it has is
+        # a name on a shortlist. Nothing here may be filled in by the report.
+        jugadores.append({
+            "external_id": f"{etiqueta}-bare", "name": f"Vacio {etiqueta}",
+            "position": "CB",
+        })
     return {
         "source": f"smoke-{etiqueta}",
         "club": {"external_id": f"{etiqueta}-club", "name": f"Club {etiqueta}",
@@ -107,6 +115,10 @@ def main():
     pidA = ids_de(hA, "Completo A")[0]
     check("B NO lee un jugador de A por id",
           c.get(f"/api/v1/players/{pidA}", headers=hB).status_code == 404)
+    rx = c.post("/api/v1/matches/calculate", headers=hB,
+                json={"player_id": str(pidA), "team_ids": [], "min_score": 0})
+    check("B NO calcula matching con un jugador de A",
+          rx.status_code == 404, f"{rx.status_code} {rx.text[:120]}")
 
     print("\n== tolerancia a datos incompletos ==")
     clubA = club_de(hA, "Club A")
@@ -141,6 +153,81 @@ def main():
                 b = d["market_analysis"]["current_market_value"]
                 check("matching y reporte coinciden en el valor",
                       abs(a - b) < max(1.0, b * 0.01), f"{a} vs {b}")
+
+    print("\n== jugador sin historial ni valor ==")
+    vacios = ids_de(hA, "Vacio A")
+    check("el jugador sin historial se cargo", bool(vacios))
+    if vacios and clubA:
+        pid = vacios[0]
+        rm = c.post("/api/v1/matches/calculate", headers=hA,
+                    json={"player_id": str(pid), "team_ids": [], "min_score": 0})
+        check("matching sin market_value no da 500",
+              rm.status_code != 500 and rm.status_code < 500,
+              f"{rm.status_code} {rm.text[:160]}")
+        rr = c.post("/api/v1/reports/generate", headers=hA,
+                    json={"player_id": str(pid), "team_id": str(clubA)})
+        check("reporte sin historial", rr.status_code == 200,
+              f"{rr.status_code} {rr.text[:160]}")
+        if rr.status_code == 200:
+            d = rr.json()
+            so = d["statistical_overview"]
+            hallazgos = d["executive_summary"]["key_findings"]
+            textos = [f.get("text", "") if isinstance(f, dict) else f for f in hallazgos]
+            # A history the client never sent must not be counted, rated or
+            # trended: build_player_data used to substitute five 7.0 matches.
+            check("no inventa apariciones",
+                  not any("appearances" in t and "Assessed on" in t for t in textos),
+                  str([t for t in textos if "appearances" in t]))
+            check("consistencia no evaluada sin historial",
+                  so["consistency_rating"].get("score") is None,
+                  str(so["consistency_rating"]))
+            check("tendencia no evaluada sin historial",
+                  so["form_trajectory"].get("direction") is None,
+                  str(so["form_trajectory"]))
+            cob = d["report_metadata"].get("data_coverage") or {}
+            check("la cobertura declara historial e indice ausentes",
+                  {"performance_history", "performance_index"}
+                  <= set(cob.get("missing_fields", [])), str(cob))
+            # The index never appears under its own name: a stand-in 70 shows
+            # up as a fee priced from it. With no price and no index there is
+            # nothing to price from, and the section has to say so.
+            ma = d["market_analysis"]
+            check("no tasa desde un indice inventado",
+                  ma.get("current_market_value") is None,
+                  f"valor {ma.get('current_market_value')}")
+            # Without an index there is nothing to rank or compare against:
+            # absent with a reason, never a 0 that reads as "worst of all".
+            ca = d["comparison_analysis"]
+            sq, lg = ca["squad_comparison"], ca["league_comparison"]
+            check("comparacion con plantel ausente, no 0",
+                  sq.get("performance_improvement_pct") is None
+                  and bool(sq.get("basis")), str(sq))
+            check("comparacion con liga ausente, no 0",
+                  lg.get("positional_percentile") is None
+                  and bool(lg.get("basis")), str(lg))
+
+            # The exports read the same report; None must not break them.
+            rid = d["report_metadata"].get("report_id")
+            for metodo, ruta in (("get", f"/api/v1/reports/{rid}/pdf"),
+                                 ("post", f"/api/v1/reports/{rid}")):
+                rp = getattr(c, metodo)(ruta, headers=hA)
+                check(f"PDF sin historial ({metodo.upper()} {ruta.split('/', 4)[-1]})",
+                      rp.status_code == 200
+                      and rp.content[:4] == b"%PDF",
+                      f"{rp.status_code} {rp.text[:160] if rp.status_code != 200 else ''}")
+
+        # The analytics routes build the same player data by another path.
+        for tipo in ("performance_comparison", "team_fit_analysis",
+                     "scouting_analysis", "statistical_summary"):
+            ra = c.post("/api/v1/analytics/advanced", headers=hA, json={
+                "type": tipo, "player_ids": [pid],
+                "parameters": {"target_team_id": clubA}})
+            check(f"analytics {tipo} sin historial",
+                  ra.status_code == 200, f"{ra.status_code} {ra.text[:160]}")
+        rpred = c.post("/api/v1/analytics/predict", headers=hA,
+                       json={"player_id": pid, "team_id": clubA})
+        check("analytics predict sin historial",
+              rpred.status_code == 200, f"{rpred.status_code} {rpred.text[:160]}")
 
     print("\n== sesion ==")
     check("anonimo lee la referencia publica",
