@@ -138,18 +138,23 @@ interface ScoutingReportData {
     };
   };
   comparison_analysis: {
+    // Every figure here is null when the player has no performance index:
+    // there is nothing to compare, and the backend says so in `basis`.
     squad_comparison: {
-      performance_improvement: string;
-      immediate_impact: string;
-      position_upgrade: boolean;
+      performance_improvement_pct?: number | null;
+      performance_improvement: string | null;
+      immediate_impact: string | null;
+      position_upgrade: boolean | null;
+      basis?: string | null;
+      current_options?: { name: string; team?: string | null; performance_index: number | null }[];
     };
     league_comparison: {
       positional_percentile?: number | null;
       league_percentile: number | null;
       peer_count?: number | null;
       basis?: string | null;
-      vs_top_performers: string;
-      statistical_rank: string;
+      vs_top_performers: string | null;
+      statistical_rank: string | null;
     };
     upgrade_assessment: string;
   };
@@ -314,6 +319,12 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
    * size; English ordinals are irregular in the units digit except in the
    * teens, which is the whole rule.
    */
+  // A comparison Kumü could not make shows as n/a: never 0, never NaN.
+  const isNum = (v: unknown): v is number =>
+    typeof v === 'number' && Number.isFinite(v)
+  const signedPct = (v: number | null | undefined): string =>
+    isNum(v) ? `${v > 0 ? '+' : ''}${v.toFixed(1)}%` : 'n/a'
+
   const ordinal = (n: number): string => {
     const v = Math.abs(Math.round(n)) % 100
     const suffix = v >= 11 && v <= 13 ? 'th'
@@ -1029,26 +1040,28 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
          <div className="bg-field-wash p-6 rounded-sm">
            <h4 className="font-medium text-ink mb-4">Squad Comparison</h4>
            <div className="text-center mb-4">
-             <div className="text-3xl font-bold text-field">{report.comparison_analysis.squad_comparison.performance_improvement}</div>
+             <div className="text-3xl font-bold text-field">{isNum(report.comparison_analysis.squad_comparison.performance_improvement_pct)
+               ? signedPct(report.comparison_analysis.squad_comparison.performance_improvement_pct)
+               : (report.comparison_analysis.squad_comparison.performance_improvement ?? 'n/a')}</div>
              <div className="text-sm text-ink-soft mt-1">Performance Improvement</div>
            </div>
            <div className="bg-paper-card p-3 rounded text-center">
-             <span className="text-field-dark font-medium">{report.comparison_analysis.squad_comparison.immediate_impact}</span>
+             <span className="text-field-dark font-medium">{report.comparison_analysis.squad_comparison.immediate_impact ?? 'n/a'}</span>
            </div>
           {/* Which group the percentage is measured against: the club's own
               squad when it has one, otherwise database peers. Without this the
               number is ambiguous. */}
-          {(report.comparison_analysis.squad_comparison as any).basis && (
+          {report.comparison_analysis.squad_comparison.basis && (
             <p className="text-xs text-ink-faint mt-3 text-center italic">
-              {(report.comparison_analysis.squad_comparison as any).basis}
+              {report.comparison_analysis.squad_comparison.basis}
             </p>
           )}
-          {((report.comparison_analysis.squad_comparison as any).current_options || []).length > 0 && (
+          {(report.comparison_analysis.squad_comparison.current_options || []).length > 0 && (
             <div className="mt-3 space-y-1">
-              {((report.comparison_analysis.squad_comparison as any).current_options || []).map((peer: any) => (
+              {(report.comparison_analysis.squad_comparison.current_options || []).map((peer) => (
                 <div key={peer.name} className="flex justify-between text-xs text-ink-soft">
                   <span>{peer.name}</span>
-                  <span className="font-medium">{peer.performance_index}</span>
+                  <span className="font-medium">{isNum(peer.performance_index) ? peer.performance_index : 'n/a'}</span>
                 </div>
               ))}
             </div>
@@ -1062,7 +1075,9 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
          <div className="bg-field-wash p-6 rounded-sm">
            <h4 className="font-medium text-ink mb-4">Standing among peers</h4>
            <div className="text-center mb-4">
-             {report.comparison_analysis.league_comparison.league_percentile !== null ? (
+             {/* `!== null` let undefined through to ordinal(), which printed
+                 "NaNth". */}
+             {isNum(report.comparison_analysis.league_comparison.league_percentile) ? (
                <>
                  <div className="text-3xl font-bold text-field">
                    {ordinal(report.comparison_analysis.league_comparison.league_percentile)}
@@ -1072,12 +1087,17 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
                  </div>
                </>
              ) : (
-               <div className="text-lg font-semibold text-ink-soft">Not assessed</div>
+               <div className="text-3xl font-bold text-ink-soft">n/a</div>
              )}
            </div>
            <div className="bg-paper-card p-3 rounded text-center">
-             <span className="text-field-dark font-medium">{report.comparison_analysis.league_comparison.statistical_rank}</span>
+             <span className="text-field-dark font-medium">{report.comparison_analysis.league_comparison.statistical_rank ?? 'n/a'}</span>
            </div>
+           {report.comparison_analysis.league_comparison.basis && (
+             <p className="text-xs text-ink-faint mt-3 text-center italic">
+               {report.comparison_analysis.league_comparison.basis}
+             </p>
+           )}
          </div>
        </div>
 

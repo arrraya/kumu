@@ -583,7 +583,7 @@ class PDFReportGenerator:
         # Recommendation and action
         recommendation = data.get("recommendation", "N/A")
         action = data.get("action", "N/A")
-        match_score = data.get("match_score", 0)
+        match_score = data.get("match_score")
         # None, not 0, when no population could place the player. `.get` with
         # a default does not cover it: the key is present and holds None, and
         # ordinal(None) would print a percentile for a ranking that was never
@@ -593,7 +593,8 @@ class PDFReportGenerator:
         summary_data = [
             ["Recommendation:", recommendation],
             ["Action:", action],
-            ["Match Score:", f"{match_score:.1f}%"],
+            ["Match Score:", f"{match_score:.1f}%"
+             if isinstance(match_score, (int, float)) else "n/a"],
             ["Overall Percentile:",
              ordinal(percentile) if isinstance(percentile, (int, float))
              else "not established"],
@@ -850,14 +851,22 @@ class PDFReportGenerator:
 
         elements.append(Paragraph("Market Analysis", self.styles["SectionHeader"]))
 
-        # Current market value
-        market_value = data.get("current_market_value", 0)
+        # Current market value. None when there is nothing to price from -
+        # no client fee and no index - and the generator says why in `basis`.
+        # The default of 0 never applied (the key is present and holds None)
+        # and :,.0f on None took the whole export down.
+        market_value = data.get("current_market_value")
+        value_text = (f"€{market_value:,.0f}"
+                      if isinstance(market_value, (int, float)) else "n/a")
         elements.append(
             Paragraph(
-                f"<b>Current Market Value:</b> €{market_value:,.0f}",
+                f"<b>Current Market Value:</b> {value_text}",
                 self.styles["BodyText"],
             )
         )
+        basis = data.get("basis")
+        if basis and not isinstance(market_value, (int, float)):
+            elements.append(Paragraph(f"<i>{basis}</i>", self.styles["BodyText"]))
         elements.append(Spacer(1, 0.1 * inch))
 
         # Value assessment
@@ -985,8 +994,14 @@ class PDFReportGenerator:
 
         elements.append(Paragraph("Negotiation Strategy", self.styles["SectionHeader"]))
 
+        # With no fee the generator returns the section's shape with None in
+        # each part and the reason in `basis`. `.get(key, {})` does not cover
+        # a key that is present and None, so each falls back with `or`.
+        if data.get("offer_strategy") is None and data.get("basis"):
+            elements.append(Paragraph(data["basis"], self.styles["Caveat"]))
+
         # Offer strategy
-        offer_strategy = data.get("offer_strategy", {})
+        offer_strategy = data.get("offer_strategy") or {}
         if offer_strategy:
             elements.append(Paragraph("<b>Offer Strategy:</b>", self.styles["SubSection"]))
             for key, value in offer_strategy.items():
@@ -1025,7 +1040,7 @@ class PDFReportGenerator:
         if offer_strategy.get("basis"):
             elements.append(Paragraph(offer_strategy["basis"], self.styles["Caveat"]))
 
-        timeline = data.get("timeline", {})
+        timeline = data.get("timeline") or {}
         if timeline:
             elements.append(Paragraph("<b>Timeline:</b>", self.styles["SubSection"]))
             # "urgency" and "basis" describe the schedule; they are not
@@ -1047,7 +1062,7 @@ class PDFReportGenerator:
             elements.append(Spacer(1, 0.1 * inch))
 
         # Tactics
-        tactics = data.get("tactics", [])
+        tactics = data.get("tactics") or []
         if tactics:
             elements.append(Paragraph("<b>Tactics:</b>", self.styles["SubSection"]))
             for tactic in tactics:

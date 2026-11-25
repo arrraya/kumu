@@ -2040,7 +2040,12 @@ class ScoutingReportGenerator:
         """
         position = player_data.get("position") or ""
         name = player_data.get("name") or ""
-        idx = (player_data.get("performance_index") or {}).get("value", 0) or 0
+        idx = (player_data.get("performance_index") or {}).get("value")
+        if not isinstance(idx, (int, float)):
+            # Peers are chosen by closest index. With none, ordering by
+            # distance to 0 picked the worst players Kumü holds and called
+            # them comparable. No index, no comparable set.
+            return []
         mercado = self._anchor_field(self._seller_anchor(player_data), "market")
 
         rows = self._query_db(
@@ -2621,7 +2626,21 @@ class ScoutingReportGenerator:
         """
         position = player_data.get("position") or ""
         name = player_data.get("name") or ""
-        player_idx = float((player_data.get("performance_index") or {}).get("value", 0) or 0)
+        player_idx = self._index_value(player_data, "value")
+        if player_idx is None:
+            # Read as 0 this made every indexless player "-100%" against the
+            # squad and "Squad depth": a verdict about a player Kumü has not
+            # rated. Same move as _no_market_analysis - the shape, no figures,
+            # and the reason.
+            return {
+                "current_options": [],
+                "performance_improvement_pct": None,
+                "performance_improvement": "n/a",
+                "immediate_impact": "Not assessed",
+                "position_upgrade": None,
+                "basis": self.NO_INDEX_COMPARISON,
+            }
+        player_idx = float(player_idx)
         team_id = team_data.get("id")
 
         rows = []
@@ -2720,7 +2739,20 @@ class ScoutingReportGenerator:
         was never wrong, only its name.
         """
         position = player_data.get("position") or ""
-        player_idx = float((player_data.get("performance_index") or {}).get("value", 0) or 0)
+        player_idx = self._index_value(player_data, "value")
+        if player_idx is None:
+            # As 0 this ranked the player below every peer: "0th percentile",
+            # "Mid-tier", last of N - a standing nobody measured.
+            return {
+                "positional_percentile": None,
+                "league_percentile": None,  # nombre antiguo, misma cifra
+                "peer_count": None,
+                "vs_top_performers": "Not assessed",
+                "statistical_rank": "n/a",
+                "elite_potential": None,
+                "basis": self.NO_INDEX_COMPARISON,
+            }
+        player_idx = float(player_idx)
 
         values = self._index_peers(position, org_ids, cache)
 
@@ -2782,8 +2814,19 @@ class ScoutingReportGenerator:
             "consistency_trend": "Improving" if recent_avg > historical_avg else "Declining",
         }
 
+    NO_INDEX_COMPARISON = (
+        "Not assessed: this player has no performance index to compare. An "
+        "index needs three appearances; supply more matches and this "
+        "comparison starts working."
+    )
+
     def _assess_upgrade_potential(self, squad_comparison: Dict, league_comparison: Dict) -> str:
         """Assess overall upgrade potential"""
+        if (squad_comparison.get("performance_improvement_pct") is None
+                and league_comparison.get("positional_percentile") is None
+                and squad_comparison.get("basis") == self.NO_INDEX_COMPARISON):
+            # "Lateral move" was the else branch, so an unrated player got it.
+            return "Not assessed: no performance index to compare."
         if squad_comparison["position_upgrade"] and league_comparison["elite_potential"]:
             return "Significant upgrade - would transform position"
         elif squad_comparison["position_upgrade"]:
@@ -3603,15 +3646,21 @@ class ScoutingReportGenerator:
             "current_team": getattr(player, "current_team", None),
             "market_value": getattr(player, "market_value", None),
             "source": getattr(player, "source", None),
-            "performance_index": getattr(player, "performance_index", None)
-            or {"value": 70.0, "trend": 0.0, "volatility": 0.2, "confidence": 0.5},
+            # None when Kumü has none. A stand-in of 70 - "the typical
+            # player" - defeated every `_has_index` guard below: the report
+            # priced, ranked and compared a player from a number nobody
+            # measured, while data_coverage beside it said the index was
+            # missing.
+            "performance_index": getattr(player, "performance_index", None),
             "metrics": cls.merge_metrics(getattr(player, "metrics", None)),
             # Travels beside the metrics so a stand-in can be told from a
             # measurement after the merge has made them identical.
             "metrics_filled": cls.filled_metrics(
                 getattr(player, "metrics", None)),
-            "performance_history": getattr(player, "performance_history", None)
-            or [{"rating": 7.0, "goals": 0, "assists": 0}] * 5,
+            # Empty, not five matches rated 7.0. Those produced "Assessed on 5
+            # appearances", a Very Consistent 90 and a Stable trend for a
+            # player whose client sent no match at all.
+            "performance_history": getattr(player, "performance_history", None) or [],
         }
 
     # The sections a complete report carries, named rather than counted.
