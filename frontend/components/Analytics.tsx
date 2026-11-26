@@ -212,7 +212,28 @@ const Analytics: React.FC = () => {
     run()
   }, [])
 
-  // Percentile of a player's metric among peers in the same position
+  /**
+   * Percentile of a player's metric among peers in the same position.
+   *
+   * This is Kumü's second implementation of the idea. The backend ranks a
+   * value against a stored benchmark table; this ranks it against the
+   * players already loaded, in TypeScript, and never calls the backend. The
+   * tie-at-zero defect was found and fixed there last week and left standing
+   * here, because fixing one of two implementations is the shape this
+   * project keeps paying for. Pedri shows 0.00 goals, 0.00 assists and 0.00
+   * shots, each with a rank of 0.
+   *
+   * `below / n` is already the conservative reading of a tie: it is the
+   * floor of the band the value sits in, which is the same answer the
+   * backend settled on. The one case it gets wrong is a tie that reaches the
+   * bottom, where `below` is nought not because the player is under
+   * everyone but because nobody is under a floor they all share. Most
+   * central midfielders score no goals in four matches; a midfielder who
+   * scored none is level with them, and a rank of 0 says he is beneath them.
+   *
+   * Alone at the bottom is still a rank, and still nought: one player under
+   * everyone is a fact about him.
+   */
   const percentile = (player: any, path: string[]): number | null => {
     const value = getMetric(player, path)
     if (value === null) return null
@@ -222,6 +243,8 @@ const Analytics: React.FC = () => {
       .filter((v): v is number => v !== null)
     if (peers.length < 5) return null
     const below = peers.filter((v) => v < value).length
+    const equal = peers.filter((v) => v === value).length
+    if (below === 0 && equal > 1) return null
     return Math.round((below / peers.length) * 100)
   }
 
@@ -382,10 +405,13 @@ const Analytics: React.FC = () => {
                     )}
                   </div>
                   <p className="mt-4 max-w-read text-sm text-ink-soft">
-                    The number beside each bar is the rank. A dash means the
-                    position has fewer than five players to rank against, so no
-                    rank was computed — which is not the same as ranking last,
-                    and the two are drawn differently.
+                    The number beside each bar is the rank. A dash means no
+                    rank could be computed: either the position holds fewer
+                    than five players to rank against, or this player is level
+                    at the bottom with others, where a nought would say he is
+                    beneath them rather than level with them. Neither is the
+                    same as ranking last, and a rank of nought — one player
+                    under all the rest — is drawn, not dashed.
                   </p>
                 </div>
 
