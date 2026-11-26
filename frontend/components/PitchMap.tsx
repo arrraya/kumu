@@ -8,10 +8,12 @@ import React, { useMemo, useState } from 'react'
  * a player operates in words and numbers. A heat map says it in a second, and
  * it is the same data the style derivation uses, so nothing extra is fetched.
  *
- * Both views come from one matrix. Touch zones are the occupancy marginal;
- * flows are the strongest zone-to-zone pass links. Below the reliability
- * threshold the map still draws but says the sample is thin, rather than
- * presenting a shape built on forty passes as if it were a pattern.
+ * The two views are drawn from two different event sets, which is why the
+ * count under the figure changes with the view. Touch zones count every
+ * located event the player produced; flows are the strongest zone-to-zone
+ * links among his completed passes. Below the reliability threshold the map
+ * still draws but says the sample is thin, rather than presenting a shape
+ * built on forty passes as if it were a pattern.
  *
  * In the Cancha language this component is not an illustration inside a tab:
  * the six-by-four grid it draws IS the layout grammar of every spatial screen,
@@ -147,6 +149,17 @@ const PitchMap: React.FC<{
     const max = Math.max(1, ...Object.values(t))
     return Object.entries(t).map(([z, n]) => ({ z: Number(z), n, w: n / max }))
   }, [profile])
+
+  /**
+   * Every located event the player produced, which is what the shading is
+   * drawn from. It is not passes_counted, and for a midfielder the two are
+   * far apart: this map was captioned with the pass total while the shading
+   * counted carries, duels, receptions and shots as well.
+   */
+  const touchTotal = useMemo(
+    () => Object.values(profile?.touch_zones ?? {}).reduce((a, b) => a + b, 0),
+    [profile],
+  )
 
   const flows = useMemo(() => {
     const f = profile?.pass_flows ?? {}
@@ -320,11 +333,22 @@ const PitchMap: React.FC<{
       {/* The count stays per map - it is this player's sample, and the thin
           sample warning is about him. The name went: it is in the heading
           now, and a caption repeating it under the title that already says
-          it is just a word taking up a line. */}
+          it is just a word taking up a line.
+
+          It follows the view because the two views are drawn from two
+          different event sets. Printing the completed-pass total under the
+          involvement map described the other tab's figure, which is the one
+          kind of number this product cannot afford: the whole claim is that
+          a figure says what it is and nothing beyond it. */}
       <figcaption className="mt-3 max-w-read text-sm text-ink-soft">
         {note && MAP_NOTE[view]}
         <span className="block mt-1 font-label text-label font-semibold uppercase text-ink-faint">
-          {profile.passes_counted ?? 0} completed passes
+          {view === 'flows'
+            ? `${profile.passes_counted ?? 0} completed passes`
+            : `${touchTotal} touches`}
+          {/* Measured on completed passes under both views on purpose: a
+              player with too few of those has played too little for the
+              touch shape to carry a pattern either. */}
           {profile.reliable === false && ' · thin sample, read the shape loosely'}
         </span>
       </figcaption>
