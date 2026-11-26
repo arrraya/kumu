@@ -1156,38 +1156,48 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
          </p>
 
          <div className="grid-zones gap-4 mb-6">
-           {riskData.map((risk, i) => (
-             <div key={i} className={`col-span-3 md:col-span-2 p-4 rounded-sm ${
-               risk.level === 'Low' ? 'bg-field-wash' :
-               risk.level === 'Moderate' ? 'bg-flag-wash' :
-               'bg-loss-wash'
-             }`}>
-               <div className="text-sm font-medium capitalize text-ink-soft">{risk.type}</div>
-               {/* The band leads and the score follows it, rather than a
-                   per-cent figure leading and the band explaining it. */}
-               <div className={`text-lg font-bold mt-1 ${
-                 risk.level === 'Low' ? 'text-field' :
-                 risk.level === 'Moderate' ? 'text-flag' :
-                 'text-loss'
-               }`}>
-                 {risk.level ? `${risk.level} risk` : 'Not assessed'}
-               </div>
-               {typeof risk.score === 'number' && (
-                 <div className={`text-xs mt-1 tabular ${
-                   risk.level === 'Low' ? 'text-field-dark' :
-                   risk.level === 'Moderate' ? 'text-flag' :
-                   'text-loss'
-                 }`}>
-                   score {Math.round(risk.score)} of 100
+           {riskData.map((risk, i) => {
+             /* An unassessed risk is not a severe one.
+
+                Three ternaries keyed on the band - box, band, score - each
+                fell through to the loss branch when there was no band, so a
+                risk Kumu could not measure was painted in the same red as
+                its worst verdict: Injury sat beside a High adaptation risk
+                looking exactly like it. Three conditions meant three places
+                to remember, and the absent case was forgotten in all three.
+
+                One decision now, so a band that does not exist cannot pick
+                up an alarm colour somewhere nobody looked. The absent card
+                carries the dashed outline the tactical panels already use
+                for the same thing, and no colour at all. */
+             const tone = !risk.level
+               ? { box: 'border border-dashed border-rule-strong', band: 'text-ink-soft', score: 'text-ink-faint' }
+               : risk.level === 'Low'
+               ? { box: 'bg-field-wash', band: 'text-field', score: 'text-field-dark' }
+               : risk.level === 'Moderate'
+               ? { box: 'bg-flag-wash', band: 'text-flag', score: 'text-flag' }
+               : { box: 'bg-loss-wash', band: 'text-loss', score: 'text-loss' };
+             return (
+               <div key={i} className={`col-span-3 md:col-span-2 p-4 rounded-sm ${tone.box}`}>
+                 <div className="text-sm font-medium capitalize text-ink-soft">{risk.type}</div>
+                 {/* The band leads and the score follows it, rather than a
+                     per-cent figure leading and the band explaining it. */}
+                 <div className={`text-lg font-bold mt-1 ${tone.band}`}>
+                   {risk.level ? `${risk.level} risk` : 'Not assessed'}
                  </div>
-               )}
-               {risk.basis && (
-                 <p className="text-xs text-ink-soft mt-2 leading-snug">
-                   {risk.basis}
-                 </p>
-               )}
-             </div>
-           ))}
+                 {typeof risk.score === 'number' && (
+                   <div className={`text-xs mt-1 tabular ${tone.score}`}>
+                     score {Math.round(risk.score)} of 100
+                   </div>
+                 )}
+                 {risk.basis && (
+                   <p className="text-xs text-ink-soft mt-2 leading-snug">
+                     {risk.basis}
+                   </p>
+                 )}
+               </div>
+             );
+           })}
          </div>
 
          {report.risk_assessment.mitigation_plan.length > 0 && (
