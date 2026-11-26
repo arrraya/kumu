@@ -8,7 +8,7 @@ import { api } from '@/lib/api'
 import { valueMark, valueTitle } from '@/lib/provenance'
 import { formatMoney } from '@/lib/money'
 import { paddedDomain, wholeTick } from '@/lib/axis'
-import PitchMap from './PitchMap'
+import PitchMap, { MAP_NOTE, MapViewToggle } from './PitchMap'
 
 /**
  * Player comparison built entirely from pipeline data.
@@ -192,6 +192,12 @@ const Analytics: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [a, setA] = useState<any>(null)
   const [b, setB] = useState<any>(null)
+  // The view belongs to the screen, not to each map. Two maps shown for
+  // comparison have to be showing the same reading, and with a toggle on
+  // each one nothing stopped Pedri's involvement being set beside
+  // Bellingham's passing - two different questions, answered side by side,
+  // presented as an answer to one.
+  const [mapView, setMapView] = useState<'touches' | 'flows'>('touches')
 
   useEffect(() => {
     const run = async () => {
@@ -312,16 +318,29 @@ const Analytics: React.FC = () => {
                   stack, which put four hundred pixels between two heat maps
                   the reader is meant to compare - and comparing them is the
                   reason both are drawn. */}
-              <div className="mt-10 grid-zones gap-x-6 gap-y-10">
+              <div className="mt-10 flex flex-wrap items-center justify-between gap-4">
+                <h3 className="font-display text-2xl m-0">Where they play</h3>
+                <MapViewToggle view={mapView} onChange={setMapView} />
+              </div>
+
+              <div className="mt-5 grid-zones gap-x-6 gap-y-8">
                 <div className={b ? 'col-span-6 lg:col-span-3' : 'col-span-6'}>
-                  <PitchMap profile={spatialOf(a)} name={a.name} tone="a" />
+                  <PitchMap profile={spatialOf(a)} name={a.name} tone="a"
+                    view={mapView} onViewChange={setMapView} note={false} />
                 </div>
                 {b && (
                   <div className="col-span-6 lg:col-span-3">
-                    <PitchMap profile={spatialOf(b)} name={b.name} tone="b" />
+                    <PitchMap profile={spatialOf(b)} name={b.name} tone="b"
+                      view={mapView} onViewChange={setMapView} note={false} />
                   </div>
                 )}
               </div>
+
+              {/* Once, under both. It describes the reading, and the reading
+                  is now the same on both maps by construction. */}
+              <p className="mt-4 max-w-read text-sm text-ink-soft">
+                {MAP_NOTE[mapView]}
+              </p>
 
               <div className="section grid-zones gap-x-10 gap-y-10">
                 <div className="col-span-6 lg:col-span-4">

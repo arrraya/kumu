@@ -52,12 +52,76 @@ const TONES = {
   b: { ink: '#3A5A7A', mark: '#2F4A66' },
 } as const
 
+type View = 'touches' | 'flows'
+
+/**
+ * What the shading means, in one place.
+ *
+ * Two maps side by side printed this paragraph twice, word for word, in the
+ * same line of sight. Stacked they were half a scroll apart and nobody
+ * noticed. The flows sentence used to name how many links were drawn; the
+ * count differs per player, which is exactly what stopped one shared
+ * sentence from serving both, and "only the strongest" says what the number
+ * was there to say.
+ */
+export const MAP_NOTE: Record<View, string> = {
+  touches:
+    'Shading is where the ball reaches them, their strongest zone against ' +
+    'the rest. The scale is deliberately steep: a midfielder touches the ' +
+    'ball almost everywhere, and a flat ramp hides where they actually live.',
+  flows:
+    'Only the strongest links between zones are drawn, completed passes ' +
+    'only. Line weight carries volume and the arrowhead is a fixed size, so ' +
+    'the head never competes with it. A ring is circulation that stayed ' +
+    'inside one zone.',
+}
+
+/**
+ * The view control, exported so a screen showing two maps can own one.
+ *
+ * Two maps for comparison must show the same view: Pedri's involvement
+ * against Bellingham's passing is two different readings presented as a
+ * comparison, and with a toggle on each map nothing stopped that. One
+ * control over both makes the wrong state unreachable rather than merely
+ * unlikely.
+ */
+export const MapViewToggle: React.FC<{
+  view: View
+  onChange: (v: View) => void
+}> = ({ view, onChange }) => (
+  <div className="flex" role="group" aria-label="Map view">
+    {(['touches', 'flows'] as const).map((v) => (
+      <button
+        key={v}
+        type="button"
+        onClick={() => onChange(v)}
+        aria-pressed={view === v}
+        className={`font-label text-label font-semibold uppercase px-4 py-2.5 border-2 border-ink -ml-0.5 first:ml-0 ${
+          view === v ? 'bg-ink text-paper' : 'bg-transparent text-ink hover:bg-paper-sunk'
+        }`}
+        style={{ minHeight: 44 }}
+      >
+        {v === 'touches' ? 'Involvement' : 'Passing'}
+      </button>
+    ))}
+  </div>
+)
+
 const PitchMap: React.FC<{
   profile?: Profile | null
   name?: string
   tone?: keyof typeof TONES
-}> = ({ profile, name, tone = 'a' }) => {
-  const [view, setView] = useState<'touches' | 'flows'>('touches')
+  /** Controlled view. Supplied by a screen that owns the toggle for more
+   *  than one map; left out, the map keeps its own. */
+  view?: View
+  onViewChange?: (v: View) => void
+  /** False where the screen prints MAP_NOTE once for several maps. */
+  note?: boolean
+}> = ({ profile, name, tone = 'a', view: viewProp, onViewChange, note = true }) => {
+  const [ownView, setOwnView] = useState<View>('touches')
+  const controlled = viewProp !== undefined
+  const view = controlled ? viewProp : ownView
+  const setView = onViewChange ?? setOwnView
   const colour = TONES[tone]
 
   const grid = profile?.grid ?? { cols: 6, rows: 4, pitch: [W, H] as [number, number] }
@@ -129,22 +193,7 @@ const PitchMap: React.FC<{
           )}
           {name ? `Where ${name} plays` : 'Where they play'}
         </h3>
-        <div className="flex" role="group" aria-label="Map view">
-          {(['touches', 'flows'] as const).map((v) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => setView(v)}
-              aria-pressed={view === v}
-              className={`font-label text-label font-semibold uppercase px-4 py-2.5 border-2 border-ink -ml-0.5 first:ml-0 ${
-                view === v ? 'bg-ink text-paper' : 'bg-transparent text-ink hover:bg-paper-sunk'
-              }`}
-              style={{ minHeight: 44 }}
-            >
-              {v === 'touches' ? 'Involvement' : 'Passing'}
-            </button>
-          ))}
-        </div>
+        {!controlled && <MapViewToggle view={view} onChange={setView} />}
       </div>
 
       <svg
@@ -260,14 +309,15 @@ const PitchMap: React.FC<{
           fontSize="3.4" fontWeight="600" letterSpacing="0.3" fill="#1B1F1A">OPP GOAL</text>
       </svg>
 
+      {/* The count stays per map - it is this player's sample, and the thin
+          sample warning is about him. The name went: it is in the heading
+          now, and a caption repeating it under the title that already says
+          it is just a word taking up a line. */}
       <figcaption className="mt-3 max-w-read text-sm text-ink-soft">
-        {view === 'touches'
-          ? 'Shading is where the ball reaches them, their strongest zone against the rest. The scale is deliberately steep: a midfielder touches the ball almost everywhere, and a flat ramp hides where they actually live.'
-          : `The ${Math.min(TOP_FLOWS, flows.length)} strongest links between zones, completed passes only. Line weight carries volume and the arrowhead is a fixed size, so the head never competes with it. A ring is circulation that stayed inside one zone.`}
+        {note && MAP_NOTE[view]}
         <span className="block mt-1 font-label text-label font-semibold uppercase text-ink-faint">
           {profile.passes_counted ?? 0} completed passes
           {profile.reliable === false && ' · thin sample, read the shape loosely'}
-          {name ? ` · ${name}` : ''}
         </span>
       </figcaption>
     </figure>
