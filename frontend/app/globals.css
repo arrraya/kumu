@@ -47,14 +47,6 @@
     text-decoration-thickness: 1px;
   }
 
-  .is-decided {
-    /* Not measured and not derived from data either: a value Kumü chose so a
-       calculation could run. A dashed rule reads as provisional where a dotted
-       one reads as approximate. */
-    border-bottom: 1px dashed theme('colors.ink.faint');
-    padding-bottom: 1px;
-  }
-
   .is-curated {
     text-decoration: underline;
     text-decoration-color: theme('colors.rule.strong');

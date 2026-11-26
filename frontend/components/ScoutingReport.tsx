@@ -669,7 +669,12 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
                   <p className="text-sm text-ink-soft mt-3 max-w-read">{f.note}</p>
                   {f.club_needs_position !== null && (
                     <p className="text-xs text-ink-faint mt-2">
-                      <span className="is-decided">
+                      {/* is-curated, like every other declared value: this
+                          is the club speaking, not a stand-in Kumu chose so
+                          a calculation could run. It was the only use of
+                          is-decided in the frontend, which is how a mark the
+                          legend never taught ended up on screen. */}
+                      <span className="is-curated">
                         {f.club_needs_position
                           ? 'The club declares a need in this position.'
                           : 'The club does not list this position among its needs.'}
@@ -710,7 +715,23 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
                     Style fit{partial ? ' — partial' : ''}
                   </h4>
                   <div className="flex items-baseline gap-3 flex-wrap">
-                    <span className={partial ? 'figure-lg is-estimated' : 'figure-lg'}>
+                    {/* Marked for where it came from, not for how much it
+                        covers. This is a weighted mean over demands the club
+                        declared, so it carries the declared mark at 39%
+                        coverage and at all of it alike - and partial coverage
+                        is already said in words twice beside it, in the
+                        heading and in the label to its right.
+
+                        It read as estimated before, which told the reader
+                        Kumu invented the figure where the source held
+                        nothing. It did not: it measured the part that exists.
+                        A dotted mark that sometimes means invented and
+                        sometimes means partial is worse than no mark, because
+                        it spends the one device carrying the argument.
+
+                        When derived style lands this must follow the origin
+                        field instead of assuming a declaration. */}
+                    <span className="figure-lg is-curated">
                       {s.compatibility_score.toFixed(1)}
                     </span>
                     {partial && (
