@@ -555,8 +555,8 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
             .join(' ');
           return (
             <>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                <div className="bg-field-wash p-4 rounded-sm">
+              <div className="grid-zones gap-6 mb-6">
+                <div className="col-span-6 md:col-span-3 bg-field-wash p-4 rounded-sm">
                   <h4 className="font-medium text-ink mb-3">Statistical Strengths</h4>
                   {stats.statistical_strengths.length > 0 ? (
                     <ul className="space-y-2">
@@ -574,7 +574,7 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
                   )}
                 </div>
 
-                <div className="bg-flag-wash p-4 rounded-sm">
+                <div className="col-span-6 md:col-span-3 bg-flag-wash p-4 rounded-sm">
                   <h4 className="font-medium text-flag mb-3">Areas for Development</h4>
                   {stats.statistical_weaknesses.length > 0 ? (
                     <ul className="space-y-2">
@@ -599,12 +599,12 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
           );
         })()}
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid-zones gap-4">
           {/* "Insufficient data" used to appear above "Score: 0/100", which
               is the score of a maximally erratic player, and "Direction:
               neutral", which is a verdict. Eighty-five of a hundred and one
               players sit below the gate, so this was the ordinary case. */}
-          <div className="bg-paper-sunk p-4 rounded-sm">
+          <div className="col-span-6 sm:col-span-3 bg-paper-sunk p-4 rounded-sm">
             <div className="text-sm text-ink-soft">Consistency</div>
             {report.statistical_overview.consistency_rating.rating ? (
               <>
@@ -626,7 +626,7 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
               </p>
             )}
           </div>
-          <div className="bg-paper-sunk p-4 rounded-sm">
+          <div className="col-span-6 sm:col-span-3 bg-paper-sunk p-4 rounded-sm">
             <div className="text-sm text-ink-soft">Form Trajectory</div>
             {report.statistical_overview.form_trajectory.trend ? (
               <>
@@ -658,84 +658,88 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
       <div className="bg-paper-card border border-rule rounded-sm p-6">
         <h3 className="text-xl font-semibold mb-6">Tactical Fit Analysis</h3>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid-zones gap-6">
           {/* Formation carries no figure. A set-membership test printed with
               a percent sign was the whole defect: 68% of club-position pairs
               came back "100%", because a 4-3-3 contains centre-backs. */}
-          {(() => {
-            const f = report.tactical_analysis.formation_compatibility;
-            if (!f.fit) {
+          <div className="col-span-6 md:col-span-3">
+            {(() => {
+              const f = report.tactical_analysis.formation_compatibility;
+              if (!f.fit) {
+                return (
+                  <div className="border border-dashed border-rule-strong p-6">
+                    <h4 className="label mb-2">Formation — not recorded</h4>
+                    <p className="text-sm text-ink-soft">{f.note}</p>
+                  </div>
+                );
+              }
               return (
-                <div className="border border-dashed border-rule-strong p-6">
-                  <h4 className="label mb-2">Formation — not recorded</h4>
-                  <p className="text-sm text-ink-soft">{f.note}</p>
-                </div>
-              );
-            }
-            return (
-              <div className="bg-field-wash p-6">
-                <h4 className="label mb-3">Formation</h4>
-                <div className="font-display text-3xl leading-none">{f.fit}</div>
-                <p className="text-sm text-ink-soft mt-3 max-w-read">{f.note}</p>
-                {f.club_needs_position !== null && (
-                  <p className="text-xs text-ink-faint mt-2">
-                    <span className="is-decided">
-                      {f.club_needs_position
-                        ? 'The club declares a need in this position.'
-                        : 'The club does not list this position among its needs.'}
-                    </span>
-                  </p>
-                )}
-              </div>
-            );
-          })()}
-
-          {(() => {
-            const s = report.tactical_analysis.style_compatibility;
-            if (s.compatibility_score === null) {
-              return (
-                <div className="border border-dashed border-rule-strong p-6">
-                  <h4 className="label mb-2">Style fit — not assessed</h4>
-                  <p className="text-sm text-ink-soft max-w-read">{s.basis}</p>
-                </div>
-              );
-            }
-            // A figure measured over part of the question is marked where
-            // the figure is, not in the paragraph under it. 94.3 read as a
-            // near-perfect fit while being a score on one of two declared
-            // demands, covering 16% of what the club asks — and the sentence
-            // saying so sat below the number, where a reader scanning the
-            // card never reached it.
-            const share = s.demand_share;
-            const partial = share !== null && share !== undefined && share < 1;
-            return (
-              <div className="bg-field-wash p-6">
-                <h4 className="label mb-3">
-                  Style fit{partial ? ' — partial' : ''}
-                </h4>
-                <div className="flex items-baseline gap-3 flex-wrap">
-                  <span className={partial ? 'figure-lg is-estimated' : 'figure-lg'}>
-                    {s.compatibility_score.toFixed(1)}
-                  </span>
-                  {partial && (
-                    <span className="label">
-                      over {Math.round(share * 100)}% of the demand
-                    </span>
+                <div className="bg-field-wash p-6">
+                  <h4 className="label mb-3">Formation</h4>
+                  <div className="font-display text-3xl leading-none">{f.fit}</div>
+                  <p className="text-sm text-ink-soft mt-3 max-w-read">{f.note}</p>
+                  {f.club_needs_position !== null && (
+                    <p className="text-xs text-ink-faint mt-2">
+                      <span className="is-decided">
+                        {f.club_needs_position
+                          ? 'The club declares a need in this position.'
+                          : 'The club does not list this position among its needs.'}
+                      </span>
+                    </p>
                   )}
                 </div>
-                <div className="text-sm text-ink-soft mt-1">
-                  out of 100 — the same scale at every club
-                </div>
-                {share !== null && share !== undefined && (
-                  <div className="mt-3 pt-3 border-t border-rule">
-                    <div className="label">
-                      Covers {Math.round(share * 100)}% of this club's declared style
-                    </div>
+              );
+            })()}
+          </div>
+
+          <div className="col-span-6 md:col-span-3">
+            {(() => {
+              const s = report.tactical_analysis.style_compatibility;
+              if (s.compatibility_score === null) {
+                return (
+                  <div className="border border-dashed border-rule-strong p-6">
+                    <h4 className="label mb-2">Style fit — not assessed</h4>
+                    <p className="text-sm text-ink-soft max-w-read">{s.basis}</p>
                   </div>
-                )}
-              </div>
-            );
-          })()}
+                );
+              }
+              // A figure measured over part of the question is marked where
+              // the figure is, not in the paragraph under it. 94.3 read as a
+              // near-perfect fit while being a score on one of two declared
+              // demands, covering 16% of what the club asks — and the sentence
+              // saying so sat below the number, where a reader scanning the
+              // card never reached it.
+              const share = s.demand_share;
+              const partial = share !== null && share !== undefined && share < 1;
+              return (
+                <div className="bg-field-wash p-6">
+                  <h4 className="label mb-3">
+                    Style fit{partial ? ' — partial' : ''}
+                  </h4>
+                  <div className="flex items-baseline gap-3 flex-wrap">
+                    <span className={partial ? 'figure-lg is-estimated' : 'figure-lg'}>
+                      {s.compatibility_score.toFixed(1)}
+                    </span>
+                    {partial && (
+                      <span className="label">
+                        over {Math.round(share * 100)}% of the demand
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-sm text-ink-soft mt-1">
+                    out of 100 — the same scale at every club
+                  </div>
+                  {share !== null && share !== undefined && (
+                    <div className="mt-3 pt-3 border-t border-rule">
+                      <div className="label">
+                        Covers {Math.round(share * 100)}% of this club's declared style
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
         </div>
 
         {report.tactical_analysis.style_compatibility.basis && (
@@ -828,8 +832,8 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
         <div className="bg-paper-card border border-rule rounded-sm p-6">
           <h3 className="text-xl font-semibold mb-6">Physical & Athletic Profile</h3>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
+          <div className="grid-zones gap-6">
+            <div className="col-span-6 md:col-span-3">
               <h4 className="label mb-4">Athletic Attributes</h4>
               {/* A GAP, NOT A ZERO. This chart used to draw three bars from
                   metrics the event feed does not carry, so a tracking-free
@@ -866,7 +870,7 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
               )}
             </div>
 
-            <div>
+            <div className="col-span-6 md:col-span-3">
               <h4 className="label mb-4">Age & Development</h4>
               {/* The report states on its own masthead that age is not carried
                   by this source. It then printed "26 · Physical prime · 2 peak
@@ -953,12 +957,12 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
         <div className="bg-paper-card border border-rule rounded-sm p-6">
           <h3 className="text-xl font-semibold mb-6">Market Value Analysis</h3>
           
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div className="bg-field-wash p-4 rounded-sm text-center">
+          <div className="grid-zones gap-4 mb-6">
+            <div className="col-span-6 md:col-span-2 bg-field-wash p-4 rounded-sm text-center">
               <div className="text-2xl font-bold text-field">{formatCurrency(report.market_analysis.current_market_value)}</div>
               <div className="text-sm text-ink-soft mt-1">Current Value</div>
             </div>
-            <div className="bg-field-wash p-4 rounded-sm text-center">
+            <div className="col-span-6 md:col-span-2 bg-field-wash p-4 rounded-sm text-center">
               <div className="text-2xl font-bold text-field">{report.market_analysis.value_assessment.assessment}</div>
               <div className="text-sm text-ink-soft mt-1">Value Assessment</div>
               {/* The verdict compares a Kumu estimate against other Kumu
@@ -969,14 +973,14 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
                 Kumu estimate vs Kumu-valued peers, not observed transfer fees
               </div>
             </div>
-            <div className="bg-paper-sunk p-4 rounded-sm text-center">
+            <div className="col-span-6 md:col-span-2 bg-paper-sunk p-4 rounded-sm text-center">
               <div className="text-2xl font-bold text-ink">{formatPercentage(report.market_analysis.roi_analysis.roi_percentage)}</div>
               <div className="text-sm text-ink-soft mt-1">Projected ROI</div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div>
+          <div className="grid-zones gap-6">
+            <div className="col-span-6 lg:col-span-3">
               <h4 className="font-medium text-ink-soft mb-4">Value Projections</h4>
               <ResponsiveContainer width="100%" height={250}>
                 <LineChart data={projectionData}>
@@ -989,7 +993,7 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
              </ResponsiveContainer>
            </div>
            
-           <div>
+           <div className="col-span-6 lg:col-span-3">
              <h4 className="font-medium text-ink-soft mb-4">Financial Assessment</h4>
              <div className="space-y-3">
                <div className="p-3 bg-paper-sunk">
@@ -1036,8 +1040,8 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
      <div className="bg-paper-card border border-rule rounded-sm p-6">
        <h3 className="text-xl font-semibold mb-6">Comparative Analysis</h3>
        
-       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-         <div className="bg-field-wash p-6 rounded-sm">
+       <div className="grid-zones gap-6">
+         <div className="col-span-6 md:col-span-3 bg-field-wash p-6 rounded-sm">
            <h4 className="font-medium text-ink mb-4">Squad Comparison</h4>
            <div className="text-center mb-4">
              <div className="text-3xl font-bold text-field">{isNum(report.comparison_analysis.squad_comparison.performance_improvement_pct)
@@ -1072,7 +1076,7 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
              with no league filter in it — the third place the same claim
              was made. The honest sentence was already underneath:
              "Ranks ~4 of 8 STs in database". */}
-         <div className="bg-field-wash p-6 rounded-sm">
+         <div className="col-span-6 md:col-span-3 bg-field-wash p-6 rounded-sm">
            <h4 className="font-medium text-ink mb-4">Standing among peers</h4>
            <div className="text-center mb-4">
              {/* `!== null` let undefined through to ordinal(), which printed
@@ -1143,9 +1147,9 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
            against each other and nothing more.
          </p>
 
-         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+         <div className="grid-zones gap-4 mb-6">
            {riskData.map((risk, i) => (
-             <div key={i} className={`p-4 rounded-sm ${
+             <div key={i} className={`col-span-3 md:col-span-2 p-4 rounded-sm ${
                risk.level === 'Low' ? 'bg-field-wash' :
                risk.level === 'Moderate' ? 'bg-flag-wash' :
                'bg-loss-wash'
@@ -1213,16 +1217,16 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
            what was absent — they come from the valuation, which Kumü has —
            so they go first, and the absence below explains what is missing
            to calibrate them rather than appearing to deny them. */}
-       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
-         <div className="bg-paper-sunk p-4 text-center">
+       <div className="grid-zones gap-4 mb-3">
+         <div className="col-span-6 md:col-span-2 bg-paper-sunk p-4 text-center">
            <div className="label">Opening offer</div>
            <div className="figure mt-2">{formatCurrency(report.negotiation_strategy.offer_strategy.opening_offer)}</div>
          </div>
-         <div className="bg-paper-sunk p-4 text-center">
+         <div className="col-span-6 md:col-span-2 bg-paper-sunk p-4 text-center">
            <div className="label">Target</div>
            <div className="figure mt-2">{formatCurrency(report.negotiation_strategy.offer_strategy.target_offer)}</div>
          </div>
-         <div className="bg-flag-wash p-4 text-center">
+         <div className="col-span-6 md:col-span-2 bg-flag-wash p-4 text-center">
            <div className="label text-flag">Maximum — and walk-away</div>
            <div className="figure mt-2 text-flag">{formatCurrency(report.negotiation_strategy.offer_strategy.maximum_offer)}</div>
          </div>
@@ -1264,8 +1268,8 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
          </div>
        )}
 
-       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-         <div>
+       <div className="grid-zones gap-6">
+         <div className="col-span-6 md:col-span-3">
            <h4 className="font-medium text-ink-soft mb-3">Timeline</h4>
            <div className="space-y-2">
              <div className="flex items-center gap-3">
@@ -1297,7 +1301,7 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
            )}
          </div>
          
-         <div>
+         <div className="col-span-6 md:col-span-3">
            <h4 className="font-medium text-ink-soft mb-3">Key Tactics</h4>
            <ul className="space-y-2">
              {report.negotiation_strategy.tactics.map((tactic, i) => (
@@ -1310,9 +1314,9 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
          </div>
        </div>
 
-       <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+       <div className="mt-6 grid-zones gap-4">
          {report.negotiation_strategy.negotiation_position.factors.map((factor, i) => (
-           <div key={i} className="flex items-center gap-2 p-3 bg-paper-sunk rounded">
+           <div key={i} className="col-span-6 md:col-span-3 flex items-center gap-2 p-3 bg-paper-sunk rounded">
              <Check className="w-5 h-5 text-field flex-shrink-0" />
              <span className="text-sm text-ink-soft">{factor}</span>
            </div>
@@ -1502,9 +1506,9 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
       )}
     </header>
 
-     <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+     <div className="grid-zones gap-8">
        {/* Sidebar Navigation */}
-       <div className="lg:col-span-1">
+       <div className="col-span-6 lg:col-span-1">
          {/* A document's contents, not a toolbar. Nine labelled sections do
              not need nine icons competing with the report beside them; a rule
              marking the current one is enough to say where the reader is. */}
@@ -1527,7 +1531,7 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
        </div>
 
        {/* Main Content */}
-       <div className="lg:col-span-3">
+       <div className="col-span-6 lg:col-span-5">
          {renderContent()}
        </div>
      </div>
