@@ -318,20 +318,23 @@ const Analytics: React.FC = () => {
                   stack, which put four hundred pixels between two heat maps
                   the reader is meant to compare - and comparing them is the
                   reason both are drawn. */}
+              {/* A label for the control, not a heading. Each map is titled
+                  with its player, so "Where they play" over them would be the
+                  same words twice in two sizes. */}
               <div className="mt-10 flex flex-wrap items-center justify-between gap-4">
-                <h3 className="font-display text-2xl m-0">Where they play</h3>
+                <span className="label">Map view{b ? ' · both players' : ''}</span>
                 <MapViewToggle view={mapView} onChange={setMapView} />
               </div>
 
               <div className="mt-5 grid-zones gap-x-6 gap-y-8">
                 <div className={b ? 'col-span-6 lg:col-span-3' : 'col-span-6'}>
                   <PitchMap profile={spatialOf(a)} name={a.name} tone="a"
-                    view={mapView} onViewChange={setMapView} note={false} />
+                    view={mapView} onViewChange={setMapView} note={false} fill />
                 </div>
                 {b && (
                   <div className="col-span-6 lg:col-span-3">
                     <PitchMap profile={spatialOf(b)} name={b.name} tone="b"
-                      view={mapView} onViewChange={setMapView} note={false} />
+                      view={mapView} onViewChange={setMapView} note={false} fill />
                   </div>
                 )}
               </div>

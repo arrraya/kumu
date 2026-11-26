@@ -117,7 +117,12 @@ const PitchMap: React.FC<{
   onViewChange?: (v: View) => void
   /** False where the screen prints MAP_NOTE once for several maps. */
   note?: boolean
-}> = ({ profile, name, tone = 'a', view: viewProp, onViewChange, note = true }) => {
+  /** Fill the column instead of capping at 860px. A screen that has already
+   *  decided the figure's width in zones has decided it; the cap is for
+   *  callers that drop the map into a column of running text. */
+  fill?: boolean
+}> = ({ profile, name, tone = 'a', view: viewProp, onViewChange, note = true,
+        fill = false }) => {
   const [ownView, setOwnView] = useState<View>('touches')
   const controlled = viewProp !== undefined
   const view = controlled ? viewProp : ownView
@@ -174,8 +179,11 @@ const PitchMap: React.FC<{
   return (
     // One column for the whole figure. The heading and the view toggle used to
     // span the full page while the pitch was capped and centred, which left the
-    // control for the map a screen's width away from the map.
-    <figure className="m-0 mx-auto w-full max-w-[860px]">
+    // control for the map a screen's width away from the map - and the cap put
+    // it back the moment a screen moved the toggle out and gave the figure a
+    // column wider than 860px, so `fill` lets that screen keep the two
+    // together.
+    <figure className={`m-0 w-full ${fill ? '' : 'mx-auto max-w-[860px]'}`}>
       <div className="flex flex-wrap items-end justify-between gap-4 mb-3">
         {/* The player's name belongs in the heading, not only in the caption
             under the pitch. Stacked, two maps were read one at a time and
