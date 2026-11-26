@@ -28,6 +28,18 @@ import PitchMap from './PitchMap'
  *  - A is clay and B is slate everywhere, including inside the pitch map. The
  *    two differ in lightness as well as hue, so the screen holds up printed in
  *    black and white and for a colour-blind reader.
+ *  - Every division of horizontal space is now stated in zones rather than in
+ *    fractions. The pickers take three columns each, the two halves of a
+ *    pitch; the detail takes four against the radar's two, which keeps the
+ *    two-to-one the old `minmax(0,1.6fr) minmax(0,1fr)` was reaching for
+ *    without inventing a ratio; and two pitch maps sit side by side at three
+ *    each, because two heat maps stacked four hundred pixels apart cannot be
+ *    compared by eye and that comparison is the whole point of the screen.
+ *
+ *    Content that fills the width keeps no grid wrapper. A panel occupying
+ *    all six zones is the section, and wrapping it in a six-column grid to
+ *    say so would be ceremony. `.grid-zones` earns its place where space is
+ *    divided, which is the only place a grid decides anything.
  */
 
 const SERIES = {
@@ -246,9 +258,16 @@ const Analytics: React.FC = () => {
         <div className="panel mt-8 text-center text-ink-faint">Loading players…</div>
       ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-8">
-            <PlayerPicker label="Player A" players={players} value={a} onChange={setA} series="a" />
-            <PlayerPicker label="Player B (optional)" players={players} value={b} onChange={setB} series="b" />
+          {/* gap-5 over the class's gap-3: zones on the pitch are contiguous,
+              panels on a page are not. The columns are what the grid decides;
+              the gutter belongs to the content sitting in them. */}
+          <div className="grid-zones gap-5 mt-8">
+            <div className="col-span-6 md:col-span-3">
+              <PlayerPicker label="Player A" players={players} value={a} onChange={setA} series="a" />
+            </div>
+            <div className="col-span-6 md:col-span-3">
+              <PlayerPicker label="Player B (optional)" players={players} value={b} onChange={setB} series="b" />
+            </div>
           </div>
 
           {/* The legend for the provenance mark, once per view. A typographic
@@ -267,12 +286,12 @@ const Analytics: React.FC = () => {
               {/* HEAD TO HEAD. The index is the answer this screen exists to
                   give, so it is set at display size and nothing on the page
                   competes with it. */}
-              <div className="mt-10 flex flex-wrap items-end justify-between gap-8 border-b-[3px] border-ink pb-5">
-                <h2 className="font-display text-3xl md:text-4xl leading-none m-0">
+              <div className="mt-10 grid-zones gap-x-8 gap-y-5 items-end border-b-[3px] border-ink pb-5">
+                <h2 className="col-span-6 lg:col-span-4 font-display text-3xl md:text-4xl leading-none m-0">
                   {a.name}
                   {b && <span className="font-normal text-ink-faint"> vs {b.name}</span>}
                 </h2>
-                <div className="flex gap-8">
+                <div className="col-span-6 lg:col-span-2 flex gap-8 lg:justify-end">
                   <div className="pl-3.5 border-l-[6px]" style={{ borderColor: SERIES.a.stroke }}>
                     <div className="label">Index A</div>
                     <div className="figure-lg">{a.performanceIndex?.value?.toFixed(1) ?? '—'}</div>
@@ -287,18 +306,25 @@ const Analytics: React.FC = () => {
               </div>
 
               {/* The spatial figure first: it is the one reading no other
-                  provider ships, and it frames everything below it. */}
-              <div className="mt-10">
-                <PitchMap profile={spatialOf(a)} name={a.name} tone="a" />
-              </div>
-              {b && (
-                <div className="mt-10">
-                  <PitchMap profile={spatialOf(b)} name={b.name} tone="b" />
-                </div>
-              )}
+                  provider ships, and it frames everything below it.
 
-              <div className="section grid grid-cols-1 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] gap-10">
-                <div>
+                  Three zones each when there are two players. They used to
+                  stack, which put four hundred pixels between two heat maps
+                  the reader is meant to compare - and comparing them is the
+                  reason both are drawn. */}
+              <div className="mt-10 grid-zones gap-x-6 gap-y-10">
+                <div className={b ? 'col-span-6 lg:col-span-3' : 'col-span-6'}>
+                  <PitchMap profile={spatialOf(a)} name={a.name} tone="a" />
+                </div>
+                {b && (
+                  <div className="col-span-6 lg:col-span-3">
+                    <PitchMap profile={spatialOf(b)} name={b.name} tone="b" />
+                  </div>
+                )}
+              </div>
+
+              <div className="section grid-zones gap-x-10 gap-y-10">
+                <div className="col-span-6 lg:col-span-4">
                   <h3 className="font-display text-2xl m-0 pb-3 border-b border-rule">
                     Percentiles against the position
                   </h3>
@@ -341,7 +367,7 @@ const Analytics: React.FC = () => {
                   </p>
                 </div>
 
-                <div>
+                <div className="col-span-6 lg:col-span-2">
                   <h3 className="font-display text-2xl m-0 pb-3 border-b border-rule">Shape</h3>
                   <div className="mt-5">
                     <ResponsiveContainer width="100%" height={300}>
