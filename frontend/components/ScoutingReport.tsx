@@ -332,21 +332,6 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
     return `${Math.round(n)}${suffix}`
   }
 
-  const RecommendationBadge = ({ recommendation }: { recommendation: string }) => {
-    const getColor = () => {
-      if (recommendation.includes('STRONGLY')) return 'bg-ink text-paper border-ink';
-      if (recommendation.includes('RECOMMENDED')) return 'bg-paper-sunk text-ink border-ink';
-      if (recommendation.includes('CONDITIONALLY')) return 'bg-paper-card text-flag border-flag';
-      return 'bg-loss-wash text-loss border-loss';
-    };
-
-    return (
-      <span className={`px-4 py-2  text-sm font-semibold border ${getColor()}`}>
-        {recommendation}
-      </span>
-    );
-  };
-
   const PercentileBar = ({ percentile, label }: { percentile: number; label: string }) => (
     <div className="mb-4">
       <div className="flex justify-between text-sm mb-1">
