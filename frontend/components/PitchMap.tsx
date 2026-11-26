@@ -96,7 +96,9 @@ const PitchMap: React.FC<{
   if (!profile || !hasData) {
     return (
       <div className="panel">
-        <h3 className="font-display text-xl">Where they play</h3>
+        <h3 className="font-display text-xl">
+          {name ? `Where ${name} plays` : 'Where they play'}
+        </h3>
         <p className="mt-2 max-w-read text-ink-soft">
           No spatial data for this player. Positional data requires event
           coordinates, which not every feed carries.
@@ -111,7 +113,22 @@ const PitchMap: React.FC<{
     // control for the map a screen's width away from the map.
     <figure className="m-0 mx-auto w-full max-w-[860px]">
       <div className="flex flex-wrap items-end justify-between gap-4 mb-3">
-        <h3 className="font-display text-2xl m-0">Where they play</h3>
+        {/* The player's name belongs in the heading, not only in the caption
+            under the pitch. Stacked, two maps were read one at a time and
+            "Where they play" was unambiguous; side by side on the zones grid,
+            two panels under an identical title send the reader to the
+            footnote to find out which player they are looking at.
+
+            The square is the mark that already keys the pickers, the bars and
+            the radar, so the panel announces its series the same way as
+            everything else on the screen rather than inventing a device. */}
+        <h3 className="font-display text-2xl m-0 flex items-center gap-2.5">
+          {name && (
+            <span className="w-4 h-2.5 inline-block shrink-0"
+              style={{ backgroundColor: colour.ink }} />
+          )}
+          {name ? `Where ${name} plays` : 'Where they play'}
+        </h3>
         <div className="flex" role="group" aria-label="Map view">
           {(['touches', 'flows'] as const).map((v) => (
             <button
