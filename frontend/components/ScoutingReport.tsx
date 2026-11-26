@@ -662,7 +662,11 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
           {/* Formation carries no figure. A set-membership test printed with
               a percent sign was the whole defect: 68% of club-position pairs
               came back "100%", because a 4-3-3 contains centre-backs. */}
-          <div className="col-span-6 md:col-span-3">
+          <div className="col-span-6 md:col-span-3 [&>div]:h-full">
+            {/* Whichever branch the IIFE returns fills the zone, so the
+                not-recorded panel ends level with the measured one. As a
+                direct grid child it stretched for free; wrapped, it needs
+                saying - and it is said once, not per branch. */}
             {(() => {
               const f = report.tactical_analysis.formation_compatibility;
               if (!f.fit) {
@@ -692,7 +696,11 @@ const ScoutingReport: React.FC<ScoutingReportProps> = ({ player, match }) => {
             })()}
           </div>
 
-          <div className="col-span-6 md:col-span-3">
+          <div className="col-span-6 md:col-span-3 [&>div]:h-full">
+            {/* Whichever branch the IIFE returns fills the zone, so the
+                not-recorded panel ends level with the measured one. As a
+                direct grid child it stretched for free; wrapped, it needs
+                saying - and it is said once, not per branch. */}
             {(() => {
               const s = report.tactical_analysis.style_compatibility;
               if (s.compatibility_score === null) {
