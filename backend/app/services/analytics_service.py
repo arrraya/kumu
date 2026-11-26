@@ -184,7 +184,18 @@ def _scouting_analysis(
         "name": team.name,
         "league": team.league,
         "country": team.country,
-        "budget": float(team.budget or 0),
+        # Not `float(team.budget or 0)`. A club loaded from a match feed
+        # has no budget - the feed records what happened on the pitch, not
+        # what the club can pay - and a zero says it can pay nothing,
+        # which is a different claim. `reports.py` was corrected during
+        # the audit and this call site, which builds the same dict for the
+        # same generator, was not: the same conversion in two files with
+        # one of them fixed, which is the shape that has already cost this
+        # project an axis and a benchmark. The guard downstream happens to
+        # reject zero today, so nothing on screen is wrong yet; what is
+        # wrong is that the distinction stops existing here, one line
+        # before anything can read it.
+        "budget": team.budget,
         "formation": team.formation,
         "playing_style": team.playing_style or {},
     }
