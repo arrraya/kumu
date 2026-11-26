@@ -73,3 +73,8 @@ frontend/tsconfig.tsbuildinfo
 
 # Pose data: hundreds of MB, downloaded not authored
 data/
+
+# Per-machine tool settings, not project configuration. The permissions a
+# coding agent was granted on one computer say nothing about the project and
+# everything about that computer, and this repository is public.
+.claude/settings.local.json
